@@ -1,0 +1,213 @@
+{
+  "name": "Example 3v3",
+  "description": "Sample scenario: 3 mons each, two starting with reduced HP. Both sides AI-driven.",
+  "format": "gen9customgame",
+  "seed": "1,2,3,4",
+  "p1": {
+    "name": "Red",
+    "ai": "human",
+    "team": [
+      {
+        "name": "Test",
+        "species": "Mew",
+        "item": "Choice Scarf",
+        "ability": "Rough Skin",
+        "moves": [
+          "Earthquake",
+          "Dragon Claw",
+          "Stone Edge",
+          "Fire Fang"
+        ],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {
+          "hp": 0,
+          "atk": 252,
+          "def": 0,
+          "spa": 0,
+          "spd": 4,
+          "spe": 252
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        },
+        "level": 100,
+        "hp": 150
+      },
+      {
+        "name": "Heatran",
+        "species": "Heatran",
+        "item": "Leftovers",
+        "ability": "Flash Fire",
+        "moves": [
+          "Magma Storm",
+          "Earth Power",
+          "Stealth Rock",
+          "Taunt"
+        ],
+        "nature": "Timid",
+        "gender": "M",
+        "evs": {
+          "hp": 252,
+          "atk": 0,
+          "def": 0,
+          "spa": 4,
+          "spd": 0,
+          "spe": 252
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 0,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        },
+        "level": 100
+      },
+      {
+        "name": "Tapu Koko",
+        "species": "Tapu Koko",
+        "item": "Life Orb",
+        "ability": "Electric Surge",
+        "moves": [
+          "Thunderbolt",
+          "Dazzling Gleam",
+          "U-turn",
+          "Volt Switch"
+        ],
+        "nature": "Timid",
+        "gender": "N",
+        "evs": {
+          "hp": 0,
+          "atk": 0,
+          "def": 0,
+          "spa": 252,
+          "spd": 4,
+          "spe": 252
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 0,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        },
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "Blue",
+    "ai": "gen9tactical",
+    "team": [
+      {
+        "name": "Skarmory",
+        "species": "Skarmory",
+        "item": "Rocky Helmet",
+        "ability": "Sturdy",
+        "moves": [
+          "Body Press",
+          "Iron Head",
+          "Roost",
+          "Whirlwind"
+        ],
+        "nature": "Impish",
+        "gender": "M",
+        "evs": {
+          "hp": 252,
+          "atk": 0,
+          "def": 252,
+          "spa": 0,
+          "spd": 4,
+          "spe": 0
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 0,
+          "spd": 31,
+          "spe": 31
+        },
+        "level": 100,
+        "hp": 80
+      },
+      {
+        "name": "Gholdengo",
+        "species": "Gholdengo",
+        "item": "Choice Specs",
+        "ability": "Good as Gold",
+        "moves": [
+          "Shadow Ball",
+          "Make It Rain",
+          "Focus Blast",
+          "Trick"
+        ],
+        "nature": "Timid",
+        "gender": "N",
+        "evs": {
+          "hp": 0,
+          "atk": 0,
+          "def": 0,
+          "spa": 252,
+          "spd": 4,
+          "spe": 252
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 0,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        },
+        "level": 100
+      },
+      {
+        "name": "Dragapult",
+        "species": "Dragapult",
+        "item": "Choice Band",
+        "ability": "Clear Body",
+        "moves": [
+          "Dragon Darts",
+          "U-turn",
+          "Phantom Force",
+          "Sucker Punch"
+        ],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {
+          "hp": 0,
+          "atk": 252,
+          "def": 0,
+          "spa": 0,
+          "spd": 4,
+          "spe": 252
+        },
+        "ivs": {
+          "hp": 31,
+          "atk": 31,
+          "def": 31,
+          "spa": 31,
+          "spd": 31,
+          "spe": 31
+        },
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {
+      "p1": [],
+      "p2": []
+    }
+  },
+  "openTeamsheet": true
+}

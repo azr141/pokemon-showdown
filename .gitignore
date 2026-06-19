@@ -1,5 +1,6 @@
 /config/*
 !/config/formats.ts
+!/config/scenarios/
 /logs/**/*
 /test/modlogs
 /test/replays/*.html
