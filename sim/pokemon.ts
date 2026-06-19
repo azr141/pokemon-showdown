@@ -503,6 +503,13 @@ export class Pokemon {
 		this.hp = 0;
 		this.clearVolatile();
 		this.hp = this.maxhp;
+		// Scenario support: starting HP override from PokemonSet.hp. Applied
+		// last so it isn't clobbered by the maxhp restore above. Clamped to
+		// [1, maxhp]; ignored if absent or non-finite.
+		const setHp = (this.set as { hp?: number }).hp;
+		if (setHp !== undefined && Number.isFinite(setHp)) {
+			this.hp = Math.max(1, Math.min(this.maxhp, Math.floor(setHp)));
+		}
 	}
 
 	toJSON(): AnyObject {

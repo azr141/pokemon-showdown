@@ -74,6 +74,14 @@ interface BattleOptions {
 	forceRandomChance?: boolean; // force Battle#randomChance to always return true or false (used in some tests)
 	deserialized?: boolean;
 	strictChoices?: boolean; // whether invalid choices should throw
+	/** Opaque scenario data passed through to onBattleStart. */
+	scenarioState?: AnyObject;
+	/**
+	 * Called once after all Pokemon switch in during the 'start' action,
+	 * immediately before turn 1 begins. Receives the live Battle instance
+	 * so callers can apply field conditions, HP overrides, etc.
+	 */
+	onBattleStart?: (battle: Battle) => void;
 }
 
 interface EventListenerWithoutPriority {
@@ -112,6 +120,8 @@ export class Battle {
 	readonly forceRandomChance: boolean | null;
 	readonly deserialized: boolean;
 	readonly strictChoices: boolean;
+	readonly scenarioState: AnyObject | null;
+	readonly onBattleStart: ((battle: Battle) => void) | null;
 	readonly format: Format;
 	readonly formatData: EffectState;
 	readonly gameType: GameType;
@@ -214,6 +224,8 @@ export class Battle {
 			options.forceRandomChance : null;
 		this.deserialized = !!options.deserialized;
 		this.strictChoices = !!options.strictChoices;
+		this.scenarioState = options.scenarioState ?? null;
+		this.onBattleStart = options.onBattleStart ?? null;
 		this.formatData = this.initEffectState({ id: format.id });
 		this.gameType = (format.gameType || 'singles');
 		this.field = new Field(this);
@@ -2719,6 +2731,7 @@ export class Battle {
 					}
 				}
 			}
+			if (this.onBattleStart) this.onBattleStart(this);
 			this.midTurn = true;
 			break;
 		}

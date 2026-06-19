@@ -21,14 +21,18 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 	keepAlive: boolean;
 	battle: Battle | null;
 
+	private onBattleStart: ((battle: Battle) => void) | null;
+
 	constructor(options: {
 		debug?: boolean, noCatch?: boolean, keepAlive?: boolean, replay?: boolean | 'spectator',
+		onBattleStart?: (battle: Battle) => void,
 	} = {}) {
 		super();
 		this.debug = !!options.debug;
 		this.noCatch = !!options.noCatch;
 		this.replay = options.replay || false;
 		this.keepAlive = !!options.keepAlive;
+		this.onBattleStart = options.onBattleStart ?? null;
 		this.battle = null;
 	}
 
@@ -81,6 +85,7 @@ export class BattleStream extends Streams.ObjectReadWriteStream<string> {
 				if (t === 'end' && !this.keepAlive) this.pushEnd();
 			};
 			if (this.debug) options.debug = true;
+			if (this.onBattleStart) options.onBattleStart = this.onBattleStart;
 			this.battle = new Battle(options);
 			break;
 		case 'player':

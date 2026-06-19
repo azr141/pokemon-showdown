@@ -114,6 +114,14 @@ export interface PokemonSet {
 	 * Tera Type
 	 */
 	teraType?: string;
+	/**
+	 * Starting HP override (absolute, not percent).
+	 *
+	 * For scenario play: clamped to [1, maxhp] on init. Ignored / undefined
+	 * for normal battles. Note: not round-tripped through packed format —
+	 * scenarios always use JSON.
+	 */
+	hp?: number;
 }
 
 export const Teams = new class Teams {
