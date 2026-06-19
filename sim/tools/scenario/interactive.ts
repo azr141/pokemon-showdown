@@ -448,6 +448,17 @@ export class InteractiveSession {
 			this.pushEvent({ kind: 'effect', side: this.sideOf(this.slotOf(parts[2])),
 				text: tpl(T.block ?? '  [POKEMON] protected itself!', { POKEMON: this.nameForSide(parts[2]) }) });
 			break;
+		case '-activate': {
+			const POKEMON = this.nameForSide(parts[2]);
+			const effectRaw = (parts[3] ?? '').replace(/^(move|ability|item):/, '').trim();
+			const effectId = this.idof(effectRaw);
+			const group = (DefaultText as any)[effectId];
+			const text = group?.activate
+				? tpl(group.activate, { POKEMON, TARGET: POKEMON })
+				: `  ${effectRaw} activated!`;
+			this.pushEvent({ kind: 'effect', side: this.sideOf(this.slotOf(parts[2])), text });
+			break;
+		}
 		case '-boost': case '-unboost': this.handleBoost(parts, cmd === '-boost'); break;
 		case '-setboost': this.handleSetBoost(parts); break;
 		case '-ability': this.handleAbilityReveal(parts); break;
