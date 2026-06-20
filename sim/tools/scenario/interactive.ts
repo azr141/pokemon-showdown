@@ -69,6 +69,8 @@ export interface PrettyEvent {
 	text: string;
 	/** Best-effort attribution to a side, if known. Useful for styling. */
 	side?: 'p1' | 'p2' | null;
+	/** For damage/heal: percentage of max HP lost (negative) or gained (positive). */
+	hpDelta?: number;
 }
 
 /** Move metadata included alongside the request to enrich the action buttons. */
@@ -503,35 +505,40 @@ export class InteractiveSession {
 		const fromId = fromTag ? this.idof(fromTag.replace('[from]', '').replace(/^(item|ability|move):/, '').trim()) : null;
 
 		if (isHeal) {
-			// `|-heal|...|[from] item: Leftovers` → look up item-specific text.
+			const newHp = this.parseHp(hp).hpPercent;
+			const beforeHp = this.lastHp.get(slot ?? '') ?? 100;
+			const gainedPct = Math.max(0, Math.round(newHp - beforeHp));
+			this.lastHp.set(slot ?? '', newHp);
+			const hpDelta = gainedPct > 0 ? gainedPct : undefined;
 			if (fromId) {
 				const item = (DefaultText as any)[fromId];
 				if (item?.heal) {
-					this.pushEvent({ kind: 'heal', side, text: tpl(item.heal, { POKEMON }) });
+					this.pushEvent({ kind: 'heal', side, hpDelta, text: tpl(item.heal, { POKEMON }) });
 					return;
 				}
 			}
-			this.pushEvent({ kind: 'heal', side, text: tpl(T.heal, { POKEMON }) });
+			this.pushEvent({ kind: 'heal', side, hpDelta, text: tpl(T.heal, { POKEMON }) });
 			return;
 		}
+
+		// Compute HP delta before choosing text template.
+		const newHp = this.parseHp(hp).hpPercent;
+		const beforeHp = this.lastHp.get(slot ?? '') ?? 100;
+		const lostPct = Math.max(0, Math.round(beforeHp - newHp));
+		this.lastHp.set(slot ?? '', newHp);
+		if (lostPct === 0) return;
 
 		// Damage: prefer per-effect (`brn.damage`, `psn.damage`, `sandstorm.damage`)
 		// then PS's `damagePercentage` fallback.
 		if (fromId) {
 			const fxGroup = (DefaultText as any)[fromId];
 			if (fxGroup?.damage) {
-				this.pushEvent({ kind: 'damage', side, text: tpl(fxGroup.damage, { POKEMON }) });
+				this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct, text: tpl(fxGroup.damage, { POKEMON }) });
 				return;
 			}
 		}
-		const newHp = this.parseHp(hp).hpPercent;
-		const beforeHp = this.lastHp.get(slot ?? '') ?? 100;
-		const lostPct = Math.max(0, Math.round(beforeHp - newHp));
-		this.lastHp.set(slot ?? '', newHp);
-		if (lostPct > 0) {
-			this.pushEvent({ kind: 'damage', side,
-				text: tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }) });
-		}
+		this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
+			text: tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }) });
 	}
 
 	private handleStatus(parts: string[], isCure: boolean): void {
