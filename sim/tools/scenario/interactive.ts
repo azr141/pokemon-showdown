@@ -509,24 +509,29 @@ export class InteractiveSession {
 		if (isHeal) {
 			const newHp = this.parseHp(hp).hpPercent;
 			const beforeHp = this.lastHp.get(slot ?? '') ?? 100;
-			const gainedPct = Math.max(0, Math.round(newHp - beforeHp));
+			const rawGain = newHp - beforeHp;
+			const gainedPct = rawGain > 0 ? Math.max(1, Math.round(rawGain)) : 0;
 			this.lastHp.set(slot ?? '', newHp);
-			const hpDelta = gainedPct > 0 ? gainedPct : undefined;
+			if (gainedPct === 0) return;
+			const pctSuffix = ` (+${gainedPct}%)`;
 			if (fromId) {
 				const item = (DefaultText as any)[fromId];
 				if (item?.heal) {
-					this.pushEvent({ kind: 'heal', side, hpDelta, text: tpl(item.heal, { POKEMON }) });
+					this.pushEvent({ kind: 'heal', side, hpDelta: gainedPct,
+						text: tpl(item.heal, { POKEMON }) + pctSuffix });
 					return;
 				}
 			}
-			this.pushEvent({ kind: 'heal', side, hpDelta, text: tpl(T.heal, { POKEMON }) });
+			this.pushEvent({ kind: 'heal', side, hpDelta: gainedPct,
+				text: tpl(T.heal, { POKEMON }) + pctSuffix });
 			return;
 		}
 
 		// Compute HP delta before choosing text template.
 		const newHp = this.parseHp(hp).hpPercent;
 		const beforeHp = this.lastHp.get(slot ?? '') ?? 100;
-		const lostPct = Math.max(0, Math.round(beforeHp - newHp));
+		const rawLoss = beforeHp - newHp;
+		const lostPct = rawLoss > 0 ? Math.max(1, Math.round(rawLoss)) : 0;
 		this.lastHp.set(slot ?? '', newHp);
 		if (lostPct === 0) return;
 
