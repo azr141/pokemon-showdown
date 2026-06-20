@@ -375,7 +375,7 @@ export class InteractiveSession {
 		case 'move': this.handleMove(parts); break;
 		case '-damage': this.handleDamageOrHeal(parts, false); break;
 		case '-heal': this.handleDamageOrHeal(parts, true); break;
-		case '-sethp': this.handleDamageOrHeal(parts, false); break;
+		case '-sethp': this.handleSetHp(parts); break;
 		case '-status': this.handleStatus(parts, false); break;
 		case '-curestatus': this.handleStatus(parts, true); break;
 		case 'faint': this.handleFaint(parts); break;
@@ -550,6 +550,16 @@ export class InteractiveSession {
 		}
 		this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
 			text: tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }) });
+	}
+
+	private handleSetHp(parts: string[]): void {
+		if (parts.slice(4).some(p => p.includes('[silent]'))) return;
+		const slot = this.slotOf(parts[2]);
+		const hp = parts[3] ?? '?';
+		const newHp = this.parseHp(hp).hpPercent;
+		const beforeHp = this.lastHp.get(slot ?? '') ?? 100;
+		const isHeal = newHp > beforeHp;
+		this.handleDamageOrHeal(parts, isHeal);
 	}
 
 	private handleStatus(parts: string[], isCure: boolean): void {
