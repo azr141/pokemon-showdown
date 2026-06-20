@@ -106,6 +106,8 @@ export interface FoeMonState {
 	boosts: Record<string, number>;
 	fainted: boolean;
 	active: boolean;
+	/** Which slot this foe occupies when active (e.g. 'p2a', 'p2b'). Null when benched. */
+	slot: string | null;
 	/** Effective types right now (base species types, overridden by tera if terastallized). */
 	types?: string[];
 	/** Min/max possible speed stat (across all EV/IV/nature spreads). Useful for outspeeding decisions. */
@@ -144,14 +146,14 @@ export interface InteractiveSessionSnapshot {
 	};
 	events: PrettyEvent[];
 	currentRequest: ChoiceRequest | null;
-	/** Per-move metadata (type/category/basePower) for the current request, parallel to request.active[0].moves. */
-	currentMoves: MoveMeta[] | null;
+	/** Per-move metadata for each active slot, parallel to request.active[i].moves. */
+	currentMoves: MoveMeta[][] | null;
 	/** Foe mons currently known, in slot order (1..6). Index 0 is slot 1. */
 	foeTeam: FoeMonState[];
 	/** True if the scenario has `openTeamsheet`; the UI uses this to know it can show foe item/ability without a reveal. */
 	openTeamsheet: boolean;
-	/** Boosts on our active mon (slot 1), parsed from |-boost|/|-unboost| events. */
-	myBoosts: Record<string, number>;
+	/** Boosts on our active mon(s), keyed by slot ('p1a', 'p1b' etc). */
+	myBoosts: Record<string, Record<string, number>>;
 	/** Weather + turns remaining (null when no weather is active). */
 	weather: FieldEffectState | null;
 	/** Terrain + turns remaining. */
@@ -217,7 +219,8 @@ export class InteractiveSession {
 
 	// Derived battle state for the snapshot.
 	private foeTeam: FoeMonState[] = [];
-	private myBoosts: Record<string, number> = {};
+	/** Per-slot boosts for our active mons (keyed by slot like 'p1a', 'p1b'). */
+	private myBoostsPerSlot: Record<string, Record<string, number>> = {};
 	private weather: string | null = null;
 	private terrain: string | null = null;
 	/**
@@ -567,8 +570,10 @@ export class InteractiveSession {
 		this.lastHp.set(slot ?? '', hpData.hpPercent);
 		// Replace foe-side state for that slot.
 		if (side === this.aiSide) {
-			// Mark any existing foe with same slot as inactive.
-			for (const f of this.foeTeam) if (f.active) f.active = false;
+			// Mark only the mon in THIS slot as inactive (not all foes — doubles has 2 active).
+			for (const f of this.foeTeam) {
+				if (f.active && f.slot === slot) { f.active = false; f.slot = null; }
+			}
 			// Find or create an entry by species id.
 			const existing = this.foeTeam.find(f => this.idof(f.species) === this.idof(det.species));
 			const foe: FoeMonState = existing ?? {
@@ -576,16 +581,18 @@ export class InteractiveSession {
 				hpPercent: hpData.hpPercent, condition: hpStatus,
 				status: hpData.status, revealedItem: null, revealedAbility: null,
 				teraType: null, terastallized: null, boosts: {}, fainted: hpData.hpPercent === 0, active: true,
+				slot: slot ?? null,
 			};
 			foe.active = true;
+			foe.slot = slot ?? null;
 			foe.hpPercent = hpData.hpPercent;
 			foe.condition = hpStatus;
 			foe.status = hpData.status;
 			foe.boosts = {}; // boosts reset on switch
 			if (!existing) this.foeTeam.push(foe);
 		} else {
-			// Switch on our side resets our boosts.
-			this.myBoosts = {};
+			// Switch on our side resets boosts for this slot only.
+			if (slot) this.myBoostsPerSlot[slot] = {};
 		}
 		const FULLNAME = det.species;
 		const NICKNAME = parts[2]?.split(': ')[1] ?? det.species;
@@ -607,7 +614,7 @@ export class InteractiveSession {
 		const details = parts[3] ?? '';
 		const det = this.parseDetails(details);
 		if (side === this.aiSide) {
-			const foe = this.foeTeam.find(f => f.active);
+			const foe = this.foeAtSlot(slot);
 			if (foe) foe.species = det.species;
 		}
 		this.pushEvent({ kind: 'effect', side, text: `${this.sidePrefix(side)}${det.species} transformed!` });
@@ -781,7 +788,9 @@ export class InteractiveSession {
 	private foeAtSlot(slot: string | undefined): FoeMonState | undefined {
 		if (!slot) return undefined;
 		if (this.sideOf(slot) !== this.aiSide) return undefined;
-		return this.foeTeam.find(f => f.active);
+		// Match by exact slot first (doubles-correct), fall back to any active (singles compat).
+		return this.foeTeam.find(f => f.active && f.slot === slot) ??
+			this.foeTeam.find(f => f.active);
 	}
 
 	private parseDetails(details: string): { species: string, level?: number, gender?: string } {
@@ -816,7 +825,7 @@ export class InteractiveSession {
 	private updateMonHpFromCondition(slot: string | undefined, condition: string): void {
 		const side = this.sideOf(slot);
 		if (side !== this.aiSide) return;
-		const foe = this.foeTeam.find(f => f.active);
+		const foe = this.foeAtSlot(slot);
 		if (!foe) return;
 		const hpData = this.parseHp(condition);
 		foe.hpPercent = hpData.hpPercent;
@@ -870,16 +879,26 @@ export class InteractiveSession {
 	}
 	private applyBoostDelta(slot: string | undefined, stat: string, delta: number): void {
 		const side = this.sideOf(slot);
-		const target = side === this.humanSide ? this.myBoosts : (this.foeAtSlot(slot)?.boosts);
-		if (!target) return;
-		const next = Math.max(-6, Math.min(6, (target[stat] ?? 0) + delta));
-		target[stat] = next;
+		if (side === this.humanSide && slot) {
+			if (!this.myBoostsPerSlot[slot]) this.myBoostsPerSlot[slot] = {};
+			const target = this.myBoostsPerSlot[slot];
+			target[stat] = Math.max(-6, Math.min(6, (target[stat] ?? 0) + delta));
+		} else {
+			const foe = this.foeAtSlot(slot);
+			if (!foe) return;
+			foe.boosts[stat] = Math.max(-6, Math.min(6, (foe.boosts[stat] ?? 0) + delta));
+		}
 	}
 	private setBoostAbsolute(slot: string | undefined, stat: string, value: number): void {
 		const side = this.sideOf(slot);
-		const target = side === this.humanSide ? this.myBoosts : (this.foeAtSlot(slot)?.boosts);
-		if (!target) return;
-		target[stat] = Math.max(-6, Math.min(6, value));
+		if (side === this.humanSide && slot) {
+			if (!this.myBoostsPerSlot[slot]) this.myBoostsPerSlot[slot] = {};
+			this.myBoostsPerSlot[slot][stat] = Math.max(-6, Math.min(6, value));
+		} else {
+			const foe = this.foeAtSlot(slot);
+			if (!foe) return;
+			foe.boosts[stat] = Math.max(-6, Math.min(6, value));
+		}
 	}
 
 	// --- move metadata enrichment ---------------------------------------
@@ -911,33 +930,34 @@ export class InteractiveSession {
 		return { items, abilities };
 	}
 
-	private buildCurrentMoves(): MoveMeta[] | null {
+	private buildCurrentMoves(): MoveMeta[][] | null {
 		if (!this.currentRequest || this.currentRequest.wait || this.currentRequest.forceSwitch || this.currentRequest.teamPreview) {
 			return null;
 		}
 		const moveReq = this.currentRequest as MoveRequest;
-		if (!moveReq.active || !moveReq.active[0]?.moves) return null;
+		if (!moveReq.active || !moveReq.active.length) return null;
 		const dex = this.dex ?? Dex;
-		// Resolve the foe's effective types once so each move's effectiveness
-		// is a constant lookup rather than a per-move species fetch.
-		const foeActive = this.foeTeam.find(f => f.active && !f.fainted);
-		const foeTypes = foeActive ? this.effectiveTypesOf(foeActive) : null;
-		return moveReq.active[0].moves.map(m => {
-			const move = dex.moves.get(m.id ?? m.move);
-			const meta: MoveMeta = {
-				move: m.move,
-				id: String(m.id ?? ''),
-				type: move?.type ?? '?',
-				category: move?.category ?? '?',
-				basePower: move?.basePower ?? 0,
-				accuracy: move?.accuracy ?? 100,
-				disabled: m.disabled,
-				target: m.target,
-			};
-			if (foeTypes && move?.exists && move.category !== 'Status' && move.type && move.type !== '???') {
-				meta.effectivenessVsFoe = this.computeEffectiveness(move.type, foeTypes);
-			}
-			return meta;
+		const activeFoes = this.foeTeam.filter(f => f.active && !f.fainted);
+		return moveReq.active.map(activeSlot => {
+			if (!activeSlot?.moves) return [];
+			return activeSlot.moves.map(m => {
+				const move = dex.moves.get(m.id ?? m.move);
+				const meta: MoveMeta = {
+					move: m.move,
+					id: String(m.id ?? ''),
+					type: move?.type ?? '?',
+					category: move?.category ?? '?',
+					basePower: move?.basePower ?? 0,
+					accuracy: move?.accuracy ?? 100,
+					disabled: m.disabled,
+					target: m.target,
+				};
+				if (activeFoes.length && move?.exists && move.category !== 'Status' && move.type && move.type !== '???') {
+					const foeTypes = this.effectiveTypesOf(activeFoes[0]);
+					meta.effectivenessVsFoe = this.computeEffectiveness(move.type, foeTypes);
+				}
+				return meta;
+			});
 		});
 	}
 
@@ -1020,7 +1040,7 @@ export class InteractiveSession {
 			currentMoves: this.buildCurrentMoves(),
 			foeTeam,
 			openTeamsheet: !!this.scenario.openTeamsheet,
-			myBoosts: this.myBoosts,
+			myBoosts: this.myBoostsPerSlot,
 			weather, terrain, pseudoWeather, sideEffects,
 			ended: this.ended,
 			winner: this.winner,
