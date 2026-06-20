@@ -530,12 +530,14 @@ export class InteractiveSession {
 		this.lastHp.set(slot ?? '', newHp);
 		if (lostPct === 0) return;
 
+		const pctSuffix = ` (${lostPct}%)`;
 		// Damage: prefer per-effect (`brn.damage`, `psn.damage`, `sandstorm.damage`)
 		// then PS's `damagePercentage` fallback.
 		if (fromId) {
 			const fxGroup = (DefaultText as any)[fromId];
 			if (fxGroup?.damage) {
-				this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct, text: tpl(fxGroup.damage, { POKEMON }) });
+				this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
+					text: tpl(fxGroup.damage, { POKEMON }) + pctSuffix });
 				return;
 			}
 		}
