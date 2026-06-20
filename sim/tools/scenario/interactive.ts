@@ -514,16 +514,18 @@ export class InteractiveSession {
 			this.lastHp.set(slot ?? '', newHp);
 			if (gainedPct === 0) return;
 			const pctSuffix = ` (+${gainedPct}%)`;
+			const ofTag = parts.slice(4).find(p => p.startsWith('[of]'));
+			const SOURCE = ofTag ? this.nameForSide(ofTag.replace('[of]', '').trim()) : POKEMON;
 			if (fromId) {
-				const item = (DefaultText as any)[fromId];
-				if (item?.heal) {
+				const healTpl = this.resolveEffectTemplate(fromId, 'heal');
+				if (healTpl) {
 					this.pushEvent({ kind: 'heal', side, hpDelta: gainedPct,
-						text: tpl(item.heal, { POKEMON }) + pctSuffix });
+						text: tpl(healTpl, { POKEMON, SOURCE }) + pctSuffix });
 					return;
 				}
 			}
 			this.pushEvent({ kind: 'heal', side, hpDelta: gainedPct,
-				text: tpl(T.heal, { POKEMON }) + pctSuffix });
+				text: tpl(T.heal, { POKEMON, SOURCE }) + pctSuffix });
 			return;
 		}
 
@@ -539,10 +541,10 @@ export class InteractiveSession {
 		// Damage: prefer per-effect (`brn.damage`, `psn.damage`, `sandstorm.damage`)
 		// then PS's `damagePercentage` fallback.
 		if (fromId) {
-			const fxGroup = (DefaultText as any)[fromId];
-			if (fxGroup?.damage) {
+			const dmgTpl = this.resolveEffectTemplate(fromId, 'damage');
+			if (dmgTpl) {
 				this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
-					text: tpl(fxGroup.damage, { POKEMON }) + pctSuffix });
+					text: tpl(dmgTpl, { POKEMON }) + pctSuffix });
 				return;
 			}
 		}
@@ -827,6 +829,18 @@ export class InteractiveSession {
 		}
 		return out;
 	}
+	private resolveEffectTemplate(effectId: string, key: string): string | undefined {
+		const group = (DefaultText as any)[effectId];
+		let val = group?.[key];
+		if (typeof val !== 'string') return undefined;
+		// PS uses "#otherId" references to share templates (e.g. tox.damage = "#psn")
+		if (val.startsWith('#')) {
+			const refGroup = (DefaultText as any)[val.slice(1)];
+			val = refGroup?.[key];
+		}
+		return typeof val === 'string' ? val : undefined;
+	}
+
 	private parseHp(hpStatus: string | undefined): { hpPercent: number, status: string | null } {
 		if (!hpStatus) return { hpPercent: 100, status: null };
 		if (hpStatus.endsWith(' fnt') || hpStatus.trim() === '0 fnt' || hpStatus.trim() === '0') {
