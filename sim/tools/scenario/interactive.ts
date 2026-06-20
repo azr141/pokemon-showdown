@@ -65,12 +65,14 @@ export interface SideEffectState {
 
 /** A pretty-printed event line — what the browser shows in the battle log. */
 export interface PrettyEvent {
-	kind: 'move' | 'damage' | 'heal' | 'status' | 'faint' | 'switch' | 'weather' | 'effect' | 'boost' | 'ability' | 'item' | 'note';
+	kind: 'move' | 'damage' | 'heal' | 'status' | 'faint' | 'switch' | 'weather' | 'effect' | 'boost' | 'ability' | 'item' | 'note' | 'formechange';
 	text: string;
 	/** Best-effort attribution to a side, if known. Useful for styling. */
 	side?: 'p1' | 'p2' | null;
 	/** For damage/heal: percentage of max HP lost (negative) or gained (positive). */
 	hpDelta?: number;
+	/** For formechange: the new species/forme name for sprite updates. */
+	newSpecies?: string;
 }
 
 /** Move metadata included alongside the request to enrich the action buttons. */
@@ -624,7 +626,8 @@ export class InteractiveSession {
 			const foe = this.foeAtSlot(slot);
 			if (foe) foe.species = det.species;
 		}
-		this.pushEvent({ kind: 'effect', side, text: `${this.sidePrefix(side)}${det.species} transformed!` });
+		this.pushEvent({ kind: 'formechange', side, newSpecies: det.species,
+			text: `${this.sidePrefix(side)}${det.species} transformed!` });
 	}
 
 	private handleBoost(parts: string[], up: boolean): void {
@@ -702,7 +705,7 @@ export class InteractiveSession {
 		}
 		this.pushEvent({ kind: 'effect', side,
 			text: tpl(T.mega, { POKEMON: this.nameForSide(parts[2]), ITEM: item }) });
-		this.pushEvent({ kind: 'effect', side,
+		this.pushEvent({ kind: 'formechange', side, newSpecies: species,
 			text: `${this.nameForSide(parts[2])} has Mega Evolved into Mega ${species}!` });
 	}
 
@@ -714,7 +717,7 @@ export class InteractiveSession {
 			const foe = this.foeAtSlot(slot);
 			if (foe) foe.species = species;
 		}
-		this.pushEvent({ kind: 'effect', side,
+		this.pushEvent({ kind: 'formechange', side, newSpecies: species,
 			text: `${this.nameForSide(parts[2])} underwent Ultra Burst into ${species}!` });
 	}
 
@@ -732,8 +735,10 @@ export class InteractiveSession {
 		if (effect === 'Dynamax' || effect === 'Dynamax Gmax') {
 			const isGmax = parts[4] === 'Gmax' || effect.includes('Gmax');
 			const label = isGmax ? 'Gigantamaxed' : 'Dynamaxed';
-			this.pushEvent({ kind: 'effect', side,
-				text: `${this.nameForSide(parts[2])} ${label}!` });
+			const POKEMON = this.nameForSide(parts[2]);
+			const gmaxSpecies = isGmax ? `${POKEMON}-Gmax` : POKEMON;
+			this.pushEvent({ kind: 'formechange', side, newSpecies: gmaxSpecies,
+				text: `${POKEMON} ${label}!` });
 			return;
 		}
 		const effectId = this.idof(effect);
@@ -749,8 +754,9 @@ export class InteractiveSession {
 		const side = this.sideOf(slot);
 		const effect = parts[3] ?? '';
 		if (effect === 'Dynamax') {
-			this.pushEvent({ kind: 'effect', side,
-				text: `${this.nameForSide(parts[2])}'s Dynamax ended!` });
+			const POKEMON = this.nameForSide(parts[2]);
+			this.pushEvent({ kind: 'formechange', side, newSpecies: POKEMON,
+				text: `${POKEMON}'s Dynamax ended!` });
 			return;
 		}
 		const effectId = this.idof(effect);
