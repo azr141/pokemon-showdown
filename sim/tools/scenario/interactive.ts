@@ -73,6 +73,18 @@ export interface PrettyEvent {
 	hpDelta?: number;
 	/** For formechange: the new species/forme name for sprite updates. */
 	newSpecies?: string;
+	/** Human-readable name of the item/ability/effect that caused this event (e.g. "Rocky Helmet", "Iron Barbs", "Leftovers"). */
+	fromEffect?: string;
+	/** Category of the triggering effect, for popup styling. */
+	fromEffectKind?: 'item' | 'ability' | 'move' | 'status';
+	/** For boost events: which stat changed (e.g. "atk", "spe"). */
+	stat?: string;
+	/** For boost events: signed stage change (e.g. +1, -2). */
+	boostDelta?: number;
+	/** For move events: the move's type (e.g. "Fire", "Water"). */
+	moveType?: string;
+	/** For move events: Physical / Special / Status. */
+	moveCategory?: 'Physical' | 'Special' | 'Status';
 }
 
 /** Move metadata included alongside the request to enrich the action buttons. */
@@ -86,6 +98,8 @@ export interface MoveMeta {
 	pp?: number;
 	disabled?: boolean | string;
 	target?: string;
+	/** Short description of the move effect, for hover tooltips. */
+	shortDesc?: string;
 	/**
 	 * Type-chart multiplier against the foe currently in front (0, 0.25,
 	 * 0.5, 1, 2, 4). Undefined when there's no foe or the move is a Status
@@ -493,7 +507,12 @@ export class InteractiveSession {
 		const side = this.sideOf(slot);
 		const POKEMON = this.nameForSide(parts[2]);
 		const MOVE = parts[3] ?? '?';
-		this.pushEvent({ kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }) });
+		const move = Dex.moves.get(MOVE);
+		this.pushEvent({
+			kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }),
+			moveType: move.exists ? move.type : undefined,
+			moveCategory: move.exists ? (move.category as 'Physical' | 'Special' | 'Status') : undefined,
+		});
 	}
 
 	private handleDamageOrHeal(parts: string[], isHeal: boolean): void {
@@ -504,7 +523,9 @@ export class InteractiveSession {
 		this.updateMonHpFromCondition(slot, hp);
 
 		const fromTag = parts.slice(4).find(p => p.startsWith('[from]'));
-		const fromId = fromTag ? this.idof(fromTag.replace('[from]', '').replace(/^(item|ability|move):/, '').trim()) : null;
+		const fromRaw = fromTag?.replace('[from]', '').trim() ?? null;
+		const fromId = fromRaw ? this.idof(fromRaw.replace(/^(item|ability|move):/, '').trim()) : null;
+		const { fromEffect, fromEffectKind } = this.resolveFromEffect(fromRaw, fromId);
 
 		if (isHeal) {
 			const newHp = this.parseHp(hp).hpPercent;
@@ -520,12 +541,14 @@ export class InteractiveSession {
 				const healTpl = this.resolveEffectTemplate(fromId, 'heal');
 				if (healTpl) {
 					this.pushEvent({ kind: 'heal', side, hpDelta: gainedPct,
-						text: tpl(healTpl, { POKEMON, SOURCE }) + pctSuffix });
+						text: tpl(healTpl, { POKEMON, SOURCE }) + pctSuffix,
+						fromEffect, fromEffectKind });
 					return;
 				}
 			}
 			this.pushEvent({ kind: 'heal', side, hpDelta: gainedPct,
-				text: tpl(T.heal, { POKEMON, SOURCE }) + pctSuffix });
+				text: tpl(T.heal, { POKEMON, SOURCE }) + pctSuffix,
+				fromEffect, fromEffectKind });
 			return;
 		}
 
@@ -538,18 +561,23 @@ export class InteractiveSession {
 		if (lostPct === 0) return;
 
 		const pctSuffix = ` (${lostPct}%)`;
-		// Damage: prefer per-effect (`brn.damage`, `psn.damage`, `sandstorm.damage`)
-		// then PS's `damagePercentage` fallback.
 		if (fromId) {
 			const dmgTpl = this.resolveEffectTemplate(fromId, 'damage');
 			if (dmgTpl) {
+				let dmgText = tpl(dmgTpl, { POKEMON }) + pctSuffix;
+				if (fromEffect && !dmgText.toLowerCase().includes(fromEffect.toLowerCase())) {
+					dmgText = `${POKEMON} was hurt by ${fromEffect}!${pctSuffix}`;
+				}
 				this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
-					text: tpl(dmgTpl, { POKEMON }) + pctSuffix });
+					text: dmgText, fromEffect, fromEffectKind });
 				return;
 			}
 		}
 		this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
-			text: tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }) });
+			text: fromEffect
+				? `${POKEMON} was hurt by ${fromEffect}!${pctSuffix}`
+				: tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }),
+			fromEffect, fromEffectKind });
 	}
 
 	private handleSetHp(parts: string[]): void {
@@ -658,11 +686,15 @@ export class InteractiveSession {
 		this.applyBoostDelta(slot, stat, delta);
 		const POKEMON = this.nameForSide(parts[2]);
 		const STAT = this.statName(stat);
-		// PS template keys: boost / boost2 / boost3, unboost / unboost2 / unboost3.
 		const key = (up ? 'boost' : 'unboost') + (amt === 1 ? '' : String(amt));
 		const fallback = up ? T.boost : T.unboost;
 		const template = (T[key] ?? fallback) as string;
-		this.pushEvent({ kind: 'boost', side, text: tpl(template, { POKEMON, STAT }) });
+		const fromTag = parts.slice(5).find(p => p.startsWith('[from]'));
+		const fromRaw = fromTag?.replace('[from]', '').trim() ?? null;
+		const fromId = fromRaw ? this.idof(fromRaw.replace(/^(item|ability|move):/, '').trim()) : null;
+		const { fromEffect, fromEffectKind } = this.resolveFromEffect(fromRaw, fromId);
+		this.pushEvent({ kind: 'boost', side, text: tpl(template, { POKEMON, STAT }),
+			stat, boostDelta: delta, fromEffect, fromEffectKind });
 	}
 	private handleSetBoost(parts: string[]): void {
 		const slot = this.slotOf(parts[2]);
@@ -839,6 +871,19 @@ export class InteractiveSession {
 		}
 		return out;
 	}
+	private resolveFromEffect(fromRaw: string | null, fromId: string | null): { fromEffect?: string, fromEffectKind?: 'item' | 'ability' | 'move' | 'status' } {
+		if (!fromRaw || !fromId) return {};
+		const group = (DefaultText as any)[fromId];
+		const name: string | undefined = group?.name;
+		let kind: 'item' | 'ability' | 'move' | 'status' | undefined;
+		if (fromRaw.startsWith('item:')) kind = 'item';
+		else if (fromRaw.startsWith('ability:')) kind = 'ability';
+		else if (fromRaw.startsWith('move:')) kind = 'move';
+		else if (['brn', 'psn', 'tox', 'par', 'slp', 'frz'].includes(fromId)) kind = 'status';
+		if (!name && !kind) return {};
+		return { fromEffect: name ?? fromRaw.replace(/^(item|ability|move):/, '').trim(), fromEffectKind: kind };
+	}
+
 	private resolveEffectTemplate(effectId: string, key: string): string | undefined {
 		const group = (DefaultText as any)[effectId];
 		let val = group?.[key];
@@ -986,6 +1031,11 @@ export class InteractiveSession {
 			if (!activeSlot?.moves) return [];
 			return activeSlot.moves.map(m => {
 				const move = dex.moves.get(m.id ?? m.move);
+				let shortDesc = move?.shortDesc || move?.desc || '';
+				if (!shortDesc && move?.exists) {
+					const textData = dex.getDescs('Moves', move.id, dex.data.Moves[move.id] || {});
+					if (textData) shortDesc = textData.shortDesc || textData.desc || '';
+				}
 				const meta: MoveMeta = {
 					move: m.move,
 					id: String(m.id ?? ''),
@@ -995,6 +1045,7 @@ export class InteractiveSession {
 					accuracy: move?.accuracy ?? 100,
 					disabled: m.disabled,
 					target: m.target,
+					shortDesc,
 				};
 				if (activeFoes.length && move?.exists && move.category !== 'Status' && move.type && move.type !== '???') {
 					const foeTypes = this.effectiveTypesOf(activeFoes[0]);

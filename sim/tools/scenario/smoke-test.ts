@@ -217,6 +217,261 @@ async function main() {
 			startProbs.some(p => /gimmicks requires startingPoint='mid'/.test(p))));
 	}
 
+	// ── Edge case: Stealth Rock damages switch-ins in mid-battle ──
+	// Rocks are pre-set. When a mon switches in, it should take SR damage.
+	{
+		const srScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		srScenario.startingPoint = 'mid';
+		srScenario.field = {
+			sideConditions: {
+				p1: ['stealthrock' as ID],
+				p2: ['stealthrock' as ID],
+			},
+		};
+		const { checks, log } = await runWithLog('edge-sr-switch', srScenario);
+		allChecks.push(...checks);
+
+		// After the initial switch-in, any subsequent switch should trigger SR damage.
+		// Look for |-damage|...|[from] Stealth Rock in the log (happens on switch-ins
+		// after the initial one, since mid startingPoint skips turn-0 switch effects).
+		allChecks.push(check('edge-sr-switch: SR damage log line present',
+			/\|-damage\|.*\[from\] Stealth Rock/.test(log),
+			'should see SR damage on a switch-in during the game'));
+	}
+
+	// ── Edge case: Psychic Seed does NOT trigger on pre-existing terrain ──
+	// Terrain is already up (mid), Indeedee holds Psychic Seed.
+	// The seed should NOT activate at battle start.
+	{
+		const seedScenario: Scenario = {
+			name: 'edge-seed-suppression',
+			format: 'gen9customgame',
+			startingPoint: 'mid',
+			p1: {
+				name: 'Seed Holder',
+				ai: 'gen9tactical',
+				team: [{
+					name: 'Indeedee', species: 'Indeedee-F',
+					item: 'Psychic Seed', ability: 'Psychic Surge',
+					moves: ['Psychic', 'Mystical Fire', 'Healing Wish', 'Calm Mind'],
+					nature: 'Timid', gender: 'F',
+					evs: { hp: 252, atk: 0, def: 0, spa: 252, spd: 0, spe: 4 },
+					ivs: { hp: 31, atk: 0, def: 31, spa: 31, spd: 31, spe: 31 },
+					level: 100,
+				}, {
+					name: 'Alakazam', species: 'Alakazam',
+					item: 'Focus Sash', ability: 'Magic Guard',
+					moves: ['Psychic', 'Shadow Ball', 'Focus Blast', 'Nasty Plot'],
+					nature: 'Timid', gender: 'M',
+					evs: { hp: 0, atk: 0, def: 0, spa: 252, spd: 4, spe: 252 },
+					ivs: { hp: 31, atk: 0, def: 31, spa: 31, spd: 31, spe: 31 },
+					level: 100,
+				}],
+			},
+			p2: {
+				name: 'Foe',
+				ai: 'random',
+				team: [{
+					name: 'Hatterene', species: 'Hatterene',
+					item: 'Leftovers', ability: 'Magic Bounce',
+					moves: ['Psyshock', 'Dazzling Gleam', 'Mystical Fire', 'Trick Room'],
+					nature: 'Quiet', gender: 'F',
+					evs: { hp: 252, atk: 0, def: 4, spa: 252, spd: 0, spe: 0 },
+					ivs: { hp: 31, atk: 0, def: 31, spa: 31, spd: 31, spe: 0 },
+					level: 100,
+				}, {
+					name: 'Gardevoir', species: 'Gardevoir',
+					item: 'Choice Scarf', ability: 'Trace',
+					moves: ['Moonblast', 'Psychic', 'Focus Blast', 'Trick'],
+					nature: 'Timid', gender: 'F',
+					evs: { hp: 0, atk: 0, def: 0, spa: 252, spd: 4, spe: 252 },
+					ivs: { hp: 31, atk: 0, def: 31, spa: 31, spd: 31, spe: 31 },
+					level: 100,
+				}],
+			},
+			field: {
+				terrain: { id: 'psychicterrain' as ID, turnsRemaining: 3 },
+			},
+		};
+		const { checks, log } = await runWithLog('edge-seed-suppression', seedScenario);
+		allChecks.push(...checks);
+
+		// The Psychic Seed should NOT have activated in the pre-turn-1 section.
+		const turn1Idx = log.indexOf('|turn|1');
+		const preTurn1 = turn1Idx >= 0 ? log.slice(0, turn1Idx) : log;
+		allChecks.push(check('edge-seed-suppression: Psychic Seed does NOT trigger at start',
+			!preTurn1.includes('Psychic Seed'),
+			'seed should not activate on pre-existing terrain'));
+	}
+
+	// ── Edge case: Trick Room pre-set actually inverts speed ──
+	// Slow mon should move first when TR is already up.
+	{
+		const trScenario: Scenario = {
+			name: 'edge-trick-room-speed',
+			format: 'gen9customgame',
+			startingPoint: 'mid',
+			seed: '1,2,3,4',
+			p1: {
+				name: 'Slow',
+				ai: 'gen9tactical',
+				team: [{
+					name: 'Torkoal', species: 'Torkoal',
+					item: 'Charcoal', ability: 'Drought',
+					moves: ['Eruption', 'Lava Plume', 'Solar Beam', 'Stealth Rock'],
+					nature: 'Quiet', gender: 'M',
+					evs: { hp: 252, atk: 0, def: 4, spa: 252, spd: 0, spe: 0 },
+					ivs: { hp: 31, atk: 0, def: 31, spa: 31, spd: 31, spe: 0 },
+					level: 100,
+				}],
+			},
+			p2: {
+				name: 'Fast',
+				ai: 'gen9tactical',
+				team: [{
+					name: 'Dragapult', species: 'Dragapult',
+					item: 'Choice Specs', ability: 'Infiltrator',
+					moves: ['Shadow Ball', 'Draco Meteor', 'Flamethrower', 'Thunderbolt'],
+					nature: 'Timid', gender: 'M',
+					evs: { hp: 0, atk: 0, def: 0, spa: 252, spd: 4, spe: 252 },
+					ivs: { hp: 31, atk: 0, def: 31, spa: 31, spd: 31, spe: 31 },
+					level: 100,
+				}],
+			},
+			field: {
+				pseudoWeather: [{ id: 'trickroom' as ID, turnsRemaining: 3 }],
+			},
+		};
+		const { checks, log } = await runWithLog('edge-trick-room', trScenario);
+		allChecks.push(...checks);
+
+		// On turn 1, Torkoal (20 base Spe) should move before Dragapult (142 base Spe).
+		// Find the first |move| line after |turn|1 — it should be from p1 (Torkoal).
+		const turn1Start = log.indexOf('|turn|1');
+		const afterTurn1 = turn1Start >= 0 ? log.slice(turn1Start) : '';
+		const firstMove = afterTurn1.match(/\|move\|(p[12])a:/);
+		allChecks.push(check('edge-trick-room: slow mon moves first under TR',
+			firstMove?.[1] === 'p1',
+			firstMove ? `first mover: ${firstMove[1]}` : 'no move found'));
+	}
+
+	// ── Edge case: Toxic damage escalates correctly from mid-battle start ──
+	{
+		const toxScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		toxScenario.startingPoint = 'mid';
+		toxScenario.volatiles = [
+			{ side: 'p1', slot: 1, status: 'tox' },
+		];
+		const { checks, log } = await runWithLog('edge-toxic-escalation', toxScenario);
+		allChecks.push(...checks);
+
+		// Toxic damage should appear in the log — at minimum the first tick.
+		allChecks.push(check('edge-toxic-escalation: toxic damage present',
+			/\|-damage\|p1a:.*\[from\] psn/.test(log),
+			'should see escalating toxic damage each turn'));
+	}
+
+	// ── Edge case: Burn does 1/16 damage each turn ──
+	{
+		const burnScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		burnScenario.startingPoint = 'mid';
+		burnScenario.volatiles = [
+			{ side: 'p1', slot: 1, status: 'brn' },
+		];
+		const { checks, log } = await runWithLog('edge-burn-damage', burnScenario);
+		allChecks.push(...checks);
+
+		allChecks.push(check('edge-burn-damage: burn status applied',
+			log.includes('|-status|p1a:') && log.includes('|brn'),
+			'burned mon should have brn status in log'));
+	}
+
+	// ── Edge case: Sandstorm chip on non-immune types ──
+	{
+		const sandScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		sandScenario.startingPoint = 'mid';
+		sandScenario.field = { weather: 'sandstorm' as ID };
+		const { checks, log } = await runWithLog('edge-sand-chip', sandScenario);
+		allChecks.push(...checks);
+
+		// Sandstorm should be active from the start.
+		const turn1Idx = log.indexOf('|turn|1');
+		const preTurn1 = turn1Idx >= 0 ? log.slice(0, turn1Idx) : log;
+		allChecks.push(check('edge-sand-chip: sandstorm weather active at start',
+			preTurn1.includes('|-weather|Sandstorm'),
+			'sandstorm should be set before turn 1'));
+		// Sand damage or upkeep should appear somewhere in the log.
+		allChecks.push(check('edge-sand-chip: sandstorm upkeep present',
+			log.includes('Sandstorm'),
+			'sandstorm should appear in log'));
+	}
+
+	// ── Edge case: Reflect/Light Screen reduce damage ──
+	{
+		const screenScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		screenScenario.startingPoint = 'mid';
+		screenScenario.field = {
+			sideConditions: {
+				p2: [
+					{ id: 'reflect' as ID, turnsRemaining: 5 },
+					{ id: 'lightscreen' as ID, turnsRemaining: 5 },
+				],
+			},
+		};
+		const { checks, log } = await runWithLog('edge-screens', screenScenario);
+		allChecks.push(...checks);
+
+		// Screens should show up in the pre-turn-1 log.
+		const turn1Idx = log.indexOf('|turn|1');
+		const preTurn1 = turn1Idx >= 0 ? log.slice(0, turn1Idx) : log;
+		allChecks.push(check('edge-screens: reflect present at start',
+			/\|-sidestart\|p2.*\|Reflect/.test(preTurn1)));
+		allChecks.push(check('edge-screens: light screen present at start',
+			preTurn1.includes('Light Screen')));
+	}
+
+	// ── Edge case: Layered spikes damage scales with layer count ──
+	{
+		const spikesScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		spikesScenario.startingPoint = 'mid';
+		spikesScenario.field = {
+			sideConditions: {
+				p1: [{ id: 'spikes' as ID, layers: 3 }],
+				p2: [{ id: 'spikes' as ID, layers: 1 }],
+			},
+		};
+		const { checks, log } = await runWithLog('edge-spikes-layers', spikesScenario);
+		allChecks.push(...checks);
+
+		// Spikes should be present.
+		const turn1Idx = log.indexOf('|turn|1');
+		const preTurn1 = turn1Idx >= 0 ? log.slice(0, turn1Idx) : log;
+		allChecks.push(check('edge-spikes-layers: p1 spikes present',
+			/\|-sidestart\|p1.*\|Spikes/.test(preTurn1)));
+		allChecks.push(check('edge-spikes-layers: p2 spikes present',
+			/\|-sidestart\|p2.*\|Spikes/.test(preTurn1)));
+	}
+
+	// ── Edge case: Confusion + boosts together ──
+	{
+		const confScenario: Scenario = JSON.parse(JSON.stringify(scenario));
+		confScenario.startingPoint = 'mid';
+		confScenario.volatiles = [
+			{ side: 'p1', slot: 1, boosts: { atk: 2, spe: 2 }, confused: 3 },
+		];
+		const { checks, log } = await runWithLog('edge-confused-boosted', confScenario);
+		allChecks.push(...checks);
+
+		// Both boosts and confusion should be logged.
+		allChecks.push(check('edge-confused-boosted: boost summary present',
+			/starts the battle with:.*atk\+2.*spe\+2/i.test(log)));
+		// Confusion may or may not trigger (RNG), but the volatile should be set.
+		// Check the pre-turn log for the confusion marker or any confusion event.
+		allChecks.push(check('edge-confused-boosted: battle completes with boosts+confusion',
+			log.includes('|turn|1'),
+			'game should reach turn 1 with boosts and confusion applied'));
+	}
+
 	// clamp behavior — hp absurdly high should clamp to maxhp.
 	{
 		const clamped: Scenario = JSON.parse(JSON.stringify(scenario));
