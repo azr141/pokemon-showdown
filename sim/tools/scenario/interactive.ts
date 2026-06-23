@@ -85,6 +85,10 @@ export interface PrettyEvent {
 	moveType?: string;
 	/** For move events: Physical / Special / Status. */
 	moveCategory?: 'Physical' | 'Special' | 'Status';
+	/** For move events: the move's target type (e.g. "self", "normal", "allAdjacent"). */
+	moveTarget?: string;
+	/** True when this is a two-turn move's charge turn (play prepareAnim, not anim). */
+	prepare?: boolean;
 }
 
 /** Move metadata included alongside the request to enrich the action buttons. */
@@ -387,6 +391,7 @@ export class InteractiveSession {
 
 		switch (cmd) {
 		case 'move': this.handleMove(parts); break;
+		case '-prepare': this.handlePrepare(parts); break;
 		case '-damage': this.handleDamageOrHeal(parts, false); break;
 		case '-heal': this.handleDamageOrHeal(parts, true); break;
 		case '-sethp': this.handleSetHp(parts); break;
@@ -512,6 +517,21 @@ export class InteractiveSession {
 			kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }),
 			moveType: move.exists ? move.type : undefined,
 			moveCategory: move.exists ? (move.category as 'Physical' | 'Special' | 'Status') : undefined,
+			moveTarget: move.exists ? move.target : undefined,
+		});
+	}
+
+	private handlePrepare(parts: string[]): void {
+		const slot = this.slotOf(parts[2]);
+		const side = this.sideOf(slot);
+		const POKEMON = this.nameForSide(parts[2]);
+		const MOVE = parts[3] ?? '?';
+		const move = Dex.moves.get(MOVE);
+		this.pushEvent({
+			kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }),
+			moveType: move.exists ? move.type : undefined,
+			moveTarget: move.exists ? move.target : undefined,
+			prepare: true,
 		});
 	}
 
