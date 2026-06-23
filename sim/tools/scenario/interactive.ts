@@ -145,6 +145,7 @@ interface PendingChoice {
 export interface InteractiveSessionSnapshot {
 	id: string;
 	scenarioName: string | null;
+	format: string;
 	humanSide: 'p1' | 'p2';
 	aiSide: 'p1' | 'p2';
 	/** Display names of the two trainers (from scenario.p1.name / p2.name). */
@@ -530,6 +531,7 @@ export class InteractiveSession {
 		this.pushEvent({
 			kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }),
 			moveType: move.exists ? move.type : undefined,
+			moveCategory: move.exists ? (move.category as 'Physical' | 'Special' | 'Status') : undefined,
 			moveTarget: move.exists ? move.target : undefined,
 			prepare: true,
 		});
@@ -1142,6 +1144,7 @@ export class InteractiveSession {
 		return {
 			id: this.id,
 			scenarioName: this.scenarioName,
+			format: this.scenario.format,
 			humanSide: this.humanSide,
 			aiSide: this.aiSide,
 			myName: this.scenario[this.humanSide].name ?? null,
