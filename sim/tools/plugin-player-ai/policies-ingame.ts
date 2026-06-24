@@ -8,19 +8,25 @@
  * ## How the real games work
  *
  * **Gen 1-2 ("Good AI")**: Weighted random. Each move gets a weight based
- * on type effectiveness against the foe. Super-effective moves are ~3x as
- * likely to be chosen, not-very-effective ~0.5x, immune moves are excluded.
- * There is no scoring, no STAB consideration, no power consideration.
+ * on type effectiveness against the foe. The AI checks the move's type
+ * against the foe's types — crucially, it does this for STATUS moves too,
+ * not just attacking moves. So Thunder Wave (Electric-type) gets a
+ * super-effective weight against Water types, even though paralysis doesn't
+ * use type effectiveness for damage. This is the famous Gen 1 AI "bug."
+ * Immune moves are excluded entirely. No STAB, no base power, no switching.
  *
- * **Gen 3 (flag-based)**: Trainers have AI flag bits. The "check viability"
- * flag runs a simple score system: penalize immune/NVE, bonus for SE, small
- * penalty for reapplying status, small bonus for damage when foe is low.
- * No STAB or base power weighting. No switching.
+ * **Gen 3 (flag-based)**: Trainers have AI flag bits. "Check viability"
+ * runs a simple score system: heavily penalize immune moves, penalize NVE,
+ * bonus for SE, penalize reapplying status the foe already has, small kill
+ * bonus when foe is low, penalize redundant weather moves. No STAB, no
+ * base power, no accuracy, no ability immunity awareness. No switching.
  *
  * **Gen 4-5 (full scoring)**: Expanded score system starting at base 100.
- * Modifiers for type effectiveness, STAB, base power, accuracy, weather
- * boost, status reapplication, recovery at low HP, priority on low-foe,
- * ability-based immunities (Levitate, etc.), setup move restrictions.
+ * Modifiers for: type effectiveness, STAB, base power, accuracy, weather
+ * boost AND weakening (Sun boosts Fire / weakens Water), status reapplication,
+ * recovery at low HP, priority on low-foe, ability-based immunities
+ * (Levitate, Flash Fire, etc.), self-KO move caution, setup move avoidance
+ * at low HP, redundant weather/terrain move penalty.
  *
  * **Gen 6+**: Same scoring as gen 4/5 with gimmick-specific policies:
  * - Gen 6 Mega: always mega evolve immediately (hardcoded, unconditional)
@@ -30,10 +36,20 @@
  *
  * Trainers NEVER voluntarily switch in any generation (with extremely rare
  * hardcoded exceptions we don't replicate here).
+ *
+ * ## Known simplifications
+ *
+ * - We do not track our own stat boosts, so we can't penalize redundant
+ *   setup (e.g. Swords Dance at +6). The real Gen 4+ AI does this.
+ * - We do not compare physical vs special against the foe's Def/SpDef.
+ *   The real Gen 4+ AI slightly prefers the attacking category that
+ *   targets the foe's lower defensive stat.
+ * - Move-specific AI scripts (e.g. don't use Dream Eater if foe isn't
+ *   asleep, don't use Hex if foe has no status) are not replicated.
+ *   The real Gen 3+ AI has hundreds of per-move checks.
  */
 
 import { toID } from '../../dex';
-import type { ModdedDex } from '../../dex';
 import type {
 	ActionPolicy, ActiveContext, MoveCandidate, MoveDecision,
 } from './types';
@@ -61,10 +77,20 @@ function getOwnTypes(ctx: ActiveContext): readonly string[] {
 	return species?.types ?? [];
 }
 
-/** Only Sun and Rain actually boost move damage. Sandstorm/Snow do not. */
+/** Sun boosts Fire and weakens Water. Rain boosts Water and weakens Fire. */
 const WEATHER_TYPE_BOOST: Record<string, string> = {
 	sunnyday: 'Fire', desolateland: 'Fire',
 	raindance: 'Water', primordialsea: 'Water',
+};
+const WEATHER_TYPE_WEAKEN: Record<string, string> = {
+	sunnyday: 'Water', desolateland: 'Water',
+	raindance: 'Fire', primordialsea: 'Fire',
+};
+
+/** Weather-setting move IDs mapped to their weather. */
+const WEATHER_MOVES: Record<string, string> = {
+	sunnyday: 'sunnyday', raindance: 'raindance',
+	sandstorm: 'sandstorm', hail: 'hail', snowscape: 'snow', chillyreception: 'snow',
 };
 
 /** Abilities that grant type immunities the AI should respect. */
@@ -90,6 +116,13 @@ function isStatusInflicting(move: {status?: string; volatileStatus?: string}): b
 	return !!(move.status || move.volatileStatus);
 }
 
+function isSelfBoostingMove(move: AnyObject): boolean {
+	if (move.boosts) return true;
+	if (move.self?.boosts) return true;
+	if (move.selfBoost?.boosts) return true;
+	return false;
+}
+
 // ----------------------------------------------------------------------
 // Gen 1-2: Weighted random selection
 // ----------------------------------------------------------------------
@@ -97,14 +130,19 @@ function isStatusInflicting(move: {status?: string; volatileStatus?: string}): b
 /**
  * Gen 1-2 "Good AI" — weighted random, not deterministic.
  *
- * Each move gets a weight based on type effectiveness:
- * - Immune: weight 0 (excluded)
- * - Not very effective: weight 1
- * - Neutral: weight 2
- * - Super effective: weight 6
+ * Each move gets a weight based on type effectiveness of the MOVE'S TYPE
+ * against the FOE'S TYPES. This applies to ALL moves — including status
+ * moves. Thunder Wave (Electric) gets super-effective weight vs Water
+ * types, even though it doesn't deal type-based damage. This is the
+ * famous Gen 1 AI behavior.
  *
- * A move is then randomly selected weighted by these values.
- * No STAB, no base power, no status logic.
+ * Weights:
+ * - Immune:            0 (excluded)
+ * - Not very effective: 1
+ * - Neutral:            2
+ * - Super effective:    6
+ *
+ * No STAB, no base power, no status-specific logic, no switching.
  */
 export function gen1WeightedRandom(): ActionPolicy {
 	return (ctx: ActiveContext) => {
@@ -125,10 +163,9 @@ export function gen1WeightedRandom(): ActionPolicy {
 				weights.push(2);
 				continue;
 			}
-			if (move.category === 'Status') {
-				weights.push(2);
-				continue;
-			}
+			// Gen 1 AI checks type effectiveness for ALL moves, including status.
+			// This is why Lorelei prefers Lovely Kiss over Aurora Beam — Normal
+			// type vs Ice/Psychic is neutral, while Ice vs Ice/Psychic is NVE.
 			const mult = typeMultiplier(ctx.dex, move.type, foeTypes);
 			if (mult === 0) {
 				weights.push(0);
@@ -163,35 +200,22 @@ export function gen1WeightedRandom(): ActionPolicy {
 // ----------------------------------------------------------------------
 
 export interface IngameConfig {
-	/** Penalty for moves the foe is immune to (default -1000). */
 	immunePenalty: number;
-	/** Penalty for not-very-effective moves (default -20). */
 	nvePenalty: number;
-	/** Bonus for super-effective moves (default +20). */
 	seBonus: number;
-	/** Bonus for STAB moves (default +10). */
 	stabBonus: number;
-	/** Weight applied to basePower/10 (default 0.5, so 100BP = +5). */
 	basePowerWeight: number;
-	/** Weight applied to accuracy (default 0.3, so 70% acc = -9 vs 100%). */
 	accuracyWeight: number;
-	/** Penalty for status-category moves (default -10). */
 	statusPenalty: number;
-	/** Extra penalty for reapplying a status the foe already has (default -80). */
 	reapplyStatusPenalty: number;
-	/** Bonus for healing moves when own HP < 33% (default +15). */
 	lowHpRecoveryBonus: number;
-	/** Bonus for attacking moves when foe HP < 25% (default +10). */
 	lowHpFoeKillBonus: number;
-	/** Bonus for priority moves when foe HP < 25% (default +15). */
 	priorityKillBonus: number;
-	/** Bonus for weather-boosted moves — only Sun/Rain (default +10). */
 	weatherBonus: number;
-	/** Penalty for self-KO moves like Explosion (default -40). */
+	weatherWeaken: number;
+	redundantWeatherPenalty: number;
 	selfKoPenalty: number;
-	/** Penalty for setup moves when own HP < 40% (default -30). */
 	lowHpSetupPenalty: number;
-	/** Whether to check foe's revealed ability for type immunities (default true). */
 	checkAbilityImmunity: boolean;
 }
 
@@ -208,7 +232,9 @@ export const GEN3_CONFIG: IngameConfig = {
 	lowHpFoeKillBonus: 5,
 	priorityKillBonus: 0,
 	weatherBonus: 0,
-	selfKoPenalty: -20,
+	weatherWeaken: 0,
+	redundantWeatherPenalty: -90,
+	selfKoPenalty: 0,
 	lowHpSetupPenalty: 0,
 	checkAbilityImmunity: false,
 };
@@ -226,6 +252,8 @@ export const GEN4_CONFIG: IngameConfig = {
 	lowHpFoeKillBonus: 10,
 	priorityKillBonus: 15,
 	weatherBonus: 10,
+	weatherWeaken: -10,
+	redundantWeatherPenalty: -90,
 	selfKoPenalty: -40,
 	lowHpSetupPenalty: -30,
 	checkAbilityImmunity: true,
@@ -241,7 +269,7 @@ function scoreMove(
 
 	let score = 100;
 
-	// --- Type effectiveness ---
+	// --- Type effectiveness (damaging moves only) ---
 	if (foeTypes.length > 0 && move.category !== 'Status') {
 		const mult = typeMultiplier(ctx.dex, move.type, foeTypes);
 		if (mult === 0) {
@@ -249,8 +277,8 @@ function scoreMove(
 		} else if (mult < 1) {
 			score += config.nvePenalty;
 		} else if (mult > 1) {
+			// Real games treat 2x and 4x SE identically in scoring.
 			score += config.seBonus;
-			if (mult >= 4) score += config.seBonus;
 		}
 	}
 
@@ -298,11 +326,27 @@ function scoreMove(
 		}
 	}
 
-	// --- Weather boost (only Sun→Fire, Rain→Water) ---
-	if (config.weatherBonus && ctx.view.weather) {
-		const boostedType = WEATHER_TYPE_BOOST[ctx.view.weather as string];
-		if (boostedType && move.type === boostedType) {
-			score += config.weatherBonus;
+	// --- Weather boost AND weakening ---
+	if (ctx.view.weather) {
+		const weather = ctx.view.weather as string;
+		if (config.weatherBonus && move.category !== 'Status') {
+			const boostedType = WEATHER_TYPE_BOOST[weather];
+			if (boostedType && move.type === boostedType) {
+				score += config.weatherBonus;
+			}
+		}
+		if (config.weatherWeaken && move.category !== 'Status') {
+			const weakenedType = WEATHER_TYPE_WEAKEN[weather];
+			if (weakenedType && move.type === weakenedType) {
+				score += config.weatherWeaken;
+			}
+		}
+		// Don't use a weather move if that weather is already active.
+		if (config.redundantWeatherPenalty) {
+			const weatherFromMove = WEATHER_MOVES[move.id as string];
+			if (weatherFromMove && weatherFromMove === weather) {
+				score += config.redundantWeatherPenalty;
+			}
 		}
 	}
 
@@ -312,7 +356,7 @@ function scoreMove(
 	}
 
 	// --- Setup moves at low HP ---
-	if (config.lowHpSetupPenalty && ownHp < 40 && move.category === 'Status' && move.boosts) {
+	if (config.lowHpSetupPenalty && ownHp < 40 && isSelfBoostingMove(move)) {
 		score += config.lowHpSetupPenalty;
 	}
 
@@ -383,7 +427,6 @@ export function useZMoveAggressively(config: IngameConfig): ActionPolicy {
 		const ownHp = parseHpPercent(ctx.pokemon.condition);
 		const foeHp = foe?.hpPercent ?? 100;
 
-		// Pick the best Z-move by score, preferring damaging ones.
 		let bestScore = -Infinity;
 		let bestCand: MoveCandidate | null = null;
 		for (const cand of zMoves) {
