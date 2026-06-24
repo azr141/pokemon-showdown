@@ -1,52 +1,51 @@
 /**
  * Plugin Player AI — in-game NPC AI policies.
  *
- * Replicates mainline Pokemon game trainer AI behavior as faithfully as
- * possible given the information available through the BattleView and
- * request objects.
+ * Replicates the mainline Pokemon trainer AI as faithfully as the available
+ * information allows. The goal is predictability: an expert who knows these
+ * rules should be able to predict the AI's move.
  *
- * ## How the real games work
+ * ## The real algorithm (Gen 3+)
  *
- * **Gen 1-2 ("Good AI")**: Weighted random. Each move gets a weight based
- * on type effectiveness against the foe. The AI checks the move's type
- * against the foe's types — crucially, it does this for STATUS moves too,
- * not just attacking moves. So Thunder Wave (Electric-type) gets a
- * super-effective weight against Water types, even though paralysis doesn't
- * use type effectiveness for damage. This is the famous Gen 1 AI "bug."
- * Immune moves are excluded entirely. No STAB, no base power, no switching.
+ * The mainline AI assigns every move a score starting at a base of 100, runs
+ * a series of evaluation routines that each adjust the score by small amounts,
+ * then picks the highest-scoring move (choosing randomly among ties). The
+ * routines, in the order the games run them:
  *
- * **Gen 3 (flag-based)**: Trainers have AI flag bits. "Check viability"
- * runs a simple score system: heavily penalize immune moves, penalize NVE,
- * bonus for SE, penalize reapplying status the foe already has, small kill
- * bonus when foe is low, penalize redundant weather moves. No STAB, no
- * base power, no accuracy, no ability immunity awareness. No switching.
+ *   1. AI_CheckBadMove — penalize moves that clearly won't work: type
+ *      immunities, ability immunities (Gen 4+), re-applying a status the foe
+ *      already has.
+ *   2. AI_TryToFaint — the damage core. Computes the damage of every move and
+ *      strongly favors a move that can KO this turn, weighted by whether the
+ *      AI moves first (speed / priority).
+ *   3. AI_CheckViability — situational tweaks: don't Explode unless it KOs,
+ *      don't heal at high HP, don't set up at low HP, don't re-set weather.
  *
- * **Gen 4-5 (full scoring)**: Expanded score system starting at base 100.
- * Modifiers for: type effectiveness, STAB, base power, accuracy, weather
- * boost AND weakening (Sun boosts Fire / weakens Water), status reapplication,
- * recovery at low HP, priority on low-foe, ability-based immunities
- * (Levitate, Flash Fire, etc.), self-KO move caution, setup move avoidance
- * at low HP, redundant weather/terrain move penalty.
+ * Gen 4 onward also reliably prefers the single highest-damage move (the
+ * `bestDamageBonus`); Gen 3 weights this only slightly, which is why Gen 3
+ * trainers visibly use sub-optimal moves more often.
  *
- * **Gen 6+**: Same scoring as gen 4/5 with gimmick-specific policies:
- * - Gen 6 Mega: always mega evolve immediately (hardcoded, unconditional)
- * - Gen 7 Z-Move: use aggressively on first opportunity, best attack
- * - Gen 8 Dynamax: save for last Pokemon (ace)
- * - Gen 9 Tera: save for last Pokemon (ace)
+ * ## Damage
  *
- * Trainers NEVER voluntarily switch in any generation (with extremely rare
- * hardcoded exceptions we don't replicate here).
+ * `AI_TryToFaint` needs damage numbers. We compute them with `damage-estimate.ts`
+ * using our real attack stats (from the request) and the foe's defenses
+ * estimated from its base stats (31 IV / 0 EV / neutral nature). See that file
+ * for the documented assumptions.
  *
- * ## Known simplifications
+ * ## Gen 1-2
  *
- * - We do not track our own stat boosts, so we can't penalize redundant
- *   setup (e.g. Swords Dance at +6). The real Gen 4+ AI does this.
- * - We do not compare physical vs special against the foe's Def/SpDef.
- *   The real Gen 4+ AI slightly prefers the attacking category that
- *   targets the foe's lower defensive stat.
- * - Move-specific AI scripts (e.g. don't use Dream Eater if foe isn't
- *   asleep, don't use Hex if foe has no status) are not replicated.
- *   The real Gen 3+ AI has hundreds of per-move checks.
+ * Gen 1-2 trainer AI is NOT damage-based. It is a weighted-random selection
+ * driven by the move type's effectiveness against the foe (applied even to
+ * status moves — the famous Gen 1 behavior). Modeled in `gen1WeightedRandom`.
+ *
+ * ## Known limitations (cannot be read from the protocol)
+ *
+ *   - Our own stat boosts and volatiles aren't visible, so we can't penalize
+ *     redundant setup (Swords Dance at +6) or redundant Substitute exactly.
+ *   - Our own side conditions (Reflect/Light Screen already up) aren't visible.
+ *   - The foe's real EVs/IVs/nature are unknown; damage is an estimate.
+ *   - Per-move AI scripts (Dream Eater needs sleep, Hex needs status, etc.)
+ *     are not individually replicated beyond the common cases below.
  */
 
 import { toID } from '../../dex';
@@ -55,6 +54,7 @@ import type {
 } from './types';
 import { typeMultiplier, effectiveTypes } from './policies';
 import type { FoePokemon } from './battle-view';
+import { estimateDamage, weOutspeed, type DamageEstimate } from './damage-estimate';
 
 // ----------------------------------------------------------------------
 // Helpers
@@ -71,29 +71,13 @@ export function parseHpPercent(condition: string): number {
 	return Math.max(0, Math.min(100, (num / den) * 100));
 }
 
-function getOwnTypes(ctx: ActiveContext): readonly string[] {
-	const speciesName = ctx.pokemon.details.split(',')[0];
-	const species = ctx.dex.species.get(toID(speciesName));
-	return species?.types ?? [];
-}
-
-/** Sun boosts Fire and weakens Water. Rain boosts Water and weakens Fire. */
-const WEATHER_TYPE_BOOST: Record<string, string> = {
-	sunnyday: 'Fire', desolateland: 'Fire',
-	raindance: 'Water', primordialsea: 'Water',
-};
-const WEATHER_TYPE_WEAKEN: Record<string, string> = {
-	sunnyday: 'Water', desolateland: 'Water',
-	raindance: 'Fire', primordialsea: 'Fire',
-};
-
-/** Weather-setting move IDs mapped to their weather. */
+/** Weather-setting move IDs mapped to the weather they cause. */
 const WEATHER_MOVES: Record<string, string> = {
 	sunnyday: 'sunnyday', raindance: 'raindance',
 	sandstorm: 'sandstorm', hail: 'hail', snowscape: 'snow', chillyreception: 'snow',
 };
 
-/** Abilities that grant type immunities the AI should respect. */
+/** Abilities that grant a full type immunity the AI (Gen 4+) respects. */
 const ABILITY_IMMUNITIES: Record<string, string> = {
 	levitate: 'Ground',
 	flashfire: 'Fire',
@@ -106,13 +90,11 @@ const ABILITY_IMMUNITIES: Record<string, string> = {
 	dryskin: 'Water',
 };
 
-/** Move IDs that KO or severely hurt the user. */
 const SELF_KO_MOVES = new Set([
-	'selfdestruct', 'explosion', 'memento', 'healingwish', 'lunardance',
-	'finalgambit', 'mistyexplosion',
+	'selfdestruct', 'explosion', 'memento', 'finalgambit', 'mistyexplosion',
 ]);
 
-function isStatusInflicting(move: {status?: string; volatileStatus?: string}): boolean {
+function isStatusInflicting(move: { status?: string; volatileStatus?: string }): boolean {
 	return !!(move.status || move.volatileStatus);
 }
 
@@ -123,26 +105,21 @@ function isSelfBoostingMove(move: AnyObject): boolean {
 	return false;
 }
 
+function abilityAbsorbs(foe: FoePokemon | undefined, moveType: string): boolean {
+	if (!foe?.revealedAbility) return false;
+	return ABILITY_IMMUNITIES[foe.revealedAbility as string] === moveType;
+}
+
 // ----------------------------------------------------------------------
-// Gen 1-2: Weighted random selection
+// Gen 1-2: weighted-random by type effectiveness
 // ----------------------------------------------------------------------
 
 /**
- * Gen 1-2 "Good AI" — weighted random, not deterministic.
+ * Gen 1-2 "Good AI" — weighted random by the MOVE TYPE'S effectiveness
+ * against the foe, applied to all moves including status moves.
  *
- * Each move gets a weight based on type effectiveness of the MOVE'S TYPE
- * against the FOE'S TYPES. This applies to ALL moves — including status
- * moves. Thunder Wave (Electric) gets super-effective weight vs Water
- * types, even though it doesn't deal type-based damage. This is the
- * famous Gen 1 AI behavior.
- *
- * Weights:
- * - Immune:            0 (excluded)
- * - Not very effective: 1
- * - Neutral:            2
- * - Super effective:    6
- *
- * No STAB, no base power, no status-specific logic, no switching.
+ * Weights: immune 0 (excluded), NVE 1, neutral 2, super-effective 6.
+ * No damage calc, no STAB, no base power, no switching.
  */
 export function gen1WeightedRandom(): ActionPolicy {
 	return (ctx: ActiveContext) => {
@@ -154,210 +131,195 @@ export function gen1WeightedRandom(): ActionPolicy {
 
 		const weights: number[] = [];
 		for (const cand of pool) {
-			if (foeTypes.length === 0) {
-				weights.push(2);
-				continue;
-			}
+			if (foeTypes.length === 0) { weights.push(2); continue; }
 			const move = ctx.dex.moves.get(cand.raw.id ?? toID(cand.move));
-			if (!move?.exists) {
-				weights.push(2);
-				continue;
-			}
-			// Gen 1 AI checks type effectiveness for ALL moves, including status.
-			// This is why Lorelei prefers Lovely Kiss over Aurora Beam — Normal
-			// type vs Ice/Psychic is neutral, while Ice vs Ice/Psychic is NVE.
+			if (!move?.exists) { weights.push(2); continue; }
 			const mult = typeMultiplier(ctx.dex, move.type, foeTypes);
-			if (mult === 0) {
-				weights.push(0);
-			} else if (mult < 1) {
-				weights.push(1);
-			} else if (mult > 1) {
-				weights.push(6);
-			} else {
-				weights.push(2);
-			}
+			if (mult === 0) weights.push(0);
+			else if (mult < 1) weights.push(1);
+			else if (mult > 1) weights.push(6);
+			else weights.push(2);
 		}
 
-		const totalWeight = weights.reduce((a, b) => a + b, 0);
-		if (totalWeight <= 0) {
-			const candidate = ctx.prng.sample(pool);
-			return { kind: 'move', candidate };
-		}
+		const total = weights.reduce((a, b) => a + b, 0);
+		if (total <= 0) return { kind: 'move', candidate: ctx.prng.sample(pool) };
 
-		let roll = ctx.prng.random() * totalWeight;
+		let roll = ctx.prng.random() * total;
 		for (let i = 0; i < pool.length; i++) {
 			roll -= weights[i];
-			if (roll <= 0) {
-				return { kind: 'move', candidate: pool[i] };
-			}
+			if (roll <= 0) return { kind: 'move', candidate: pool[i] };
 		}
 		return { kind: 'move', candidate: pool[pool.length - 1] };
 	};
 }
 
 // ----------------------------------------------------------------------
-// Gen 3+ scoring config & engine
+// Gen 3+ scoring engine
 // ----------------------------------------------------------------------
 
 export interface IngameConfig {
+	/** Bonus for a KO move when we outspeed (default +6). */
+	koFasterBonus: number;
+	/** Bonus for a KO move via positive priority when we'd be slower (default +5). */
+	priorityKoBonus: number;
+	/** Bonus for a KO move when we're slower and have no priority (default +4). */
+	koSlowerBonus: number;
+	/** Bonus for the single highest-damage move. Gen 3 weights this low. */
+	bestDamageBonus: number;
+	/** Penalty for a type-immune move (vanilla uses -10). */
 	immunePenalty: number;
-	nvePenalty: number;
-	seBonus: number;
-	stabBonus: number;
-	basePowerWeight: number;
-	accuracyWeight: number;
-	statusPenalty: number;
+	/** Penalty for re-applying a status the foe already has (default -12). */
 	reapplyStatusPenalty: number;
-	lowHpRecoveryBonus: number;
-	lowHpFoeKillBonus: number;
-	priorityKillBonus: number;
-	weatherBonus: number;
-	weatherWeaken: number;
+	/** Bonus for inflicting a fresh status on an unstatused foe (default +2). */
+	statusBonus: number;
+	/** Penalty for a self-KO move (Explosion) that would NOT KO (default -8). */
+	explosionNoKoPenalty: number;
+	/** Penalty for a healing move when own HP is high (default -8). */
+	highHpHealPenalty: number;
+	/** Bonus for a healing move when own HP is low (default +6). */
+	lowHpHealBonus: number;
+	/** Bonus for a setup move when own HP is high (default +2). */
+	setupHighHpBonus: number;
+	/** Penalty for a setup move when own HP is low (default -8). */
+	setupLowHpPenalty: number;
+	/** Penalty for re-setting weather that's already active (default -10). */
 	redundantWeatherPenalty: number;
-	selfKoPenalty: number;
-	lowHpSetupPenalty: number;
+	/** Whether to respect the foe's revealed ability immunities (Gen 4+). */
 	checkAbilityImmunity: boolean;
 }
 
+/**
+ * Gen 3 (RSE) — loose. KO detection drives play, but with only a slight
+ * preference for the strongest non-KO move, so sub-optimal picks are common.
+ * No ability-immunity awareness; no Explosion caution.
+ */
 export const GEN3_CONFIG: IngameConfig = {
-	immunePenalty: -1000,
-	nvePenalty: -10,
-	seBonus: 15,
-	stabBonus: 0,
-	basePowerWeight: 0,
-	accuracyWeight: 0,
-	statusPenalty: -10,
-	reapplyStatusPenalty: -80,
-	lowHpRecoveryBonus: 0,
-	lowHpFoeKillBonus: 5,
-	priorityKillBonus: 0,
-	weatherBonus: 0,
-	weatherWeaken: 0,
-	redundantWeatherPenalty: -90,
-	selfKoPenalty: 0,
-	lowHpSetupPenalty: 0,
+	koFasterBonus: 6,
+	priorityKoBonus: 5,
+	koSlowerBonus: 4,
+	bestDamageBonus: 1,
+	immunePenalty: -10,
+	reapplyStatusPenalty: -12,
+	statusBonus: 2,
+	explosionNoKoPenalty: 0,
+	highHpHealPenalty: -8,
+	lowHpHealBonus: 6,
+	setupHighHpBonus: 2,
+	setupLowHpPenalty: -8,
+	redundantWeatherPenalty: -10,
 	checkAbilityImmunity: false,
 };
 
+/**
+ * Gen 4-9 — reliably uses the strongest damaging move, respects ability
+ * immunities, and avoids reckless Explosion. Gimmick handling layered on top
+ * by the per-gen chains.
+ */
 export const GEN4_CONFIG: IngameConfig = {
-	immunePenalty: -1000,
-	nvePenalty: -20,
-	seBonus: 20,
-	stabBonus: 10,
-	basePowerWeight: 0.5,
-	accuracyWeight: 0.3,
-	statusPenalty: -10,
-	reapplyStatusPenalty: -80,
-	lowHpRecoveryBonus: 15,
-	lowHpFoeKillBonus: 10,
-	priorityKillBonus: 15,
-	weatherBonus: 10,
-	weatherWeaken: -10,
-	redundantWeatherPenalty: -90,
-	selfKoPenalty: -40,
-	lowHpSetupPenalty: -30,
+	koFasterBonus: 6,
+	priorityKoBonus: 5,
+	koSlowerBonus: 4,
+	bestDamageBonus: 3,
+	immunePenalty: -10,
+	reapplyStatusPenalty: -12,
+	statusBonus: 2,
+	explosionNoKoPenalty: -8,
+	highHpHealPenalty: -8,
+	lowHpHealBonus: 6,
+	setupHighHpBonus: 2,
+	setupLowHpPenalty: -8,
+	redundantWeatherPenalty: -10,
 	checkAbilityImmunity: true,
 };
 
-function scoreMove(
-	cand: MoveCandidate, ctx: ActiveContext, config: IngameConfig,
-	foe: FoePokemon | undefined, foeTypes: readonly string[], ownTypes: readonly string[],
-	ownHp: number, foeHp: number
+interface ScoredCandidate {
+	cand: MoveCandidate;
+	est: DamageEstimate;
+}
+
+/** Compute damage estimates for the pool, zeroing ability-immune moves. */
+function estimatePool(
+	pool: MoveCandidate[], ctx: ActiveContext, config: IngameConfig, foe: FoePokemon | undefined
+): ScoredCandidate[] {
+	return pool.map(cand => {
+		if (!foe) return { cand, est: { percent: 0, canKO: false, effectiveness: 1 } };
+		let est = estimateDamage(cand, ctx, foe);
+		if (config.checkAbilityImmunity && est.percent > 0) {
+			const move = ctx.dex.moves.get(cand.raw.id ?? toID(cand.move));
+			if (move && abilityAbsorbs(foe, move.type)) {
+				est = { percent: 0, canKO: false, effectiveness: 0 };
+			}
+		}
+		return { cand, est };
+	});
+}
+
+function scoreCandidate(
+	sc: ScoredCandidate, ctx: ActiveContext, config: IngameConfig,
+	foe: FoePokemon | undefined, ownHp: number, bestDamagePercent: number
 ): number {
+	const { cand, est } = sc;
 	const move = ctx.dex.moves.get(cand.raw.id ?? toID(cand.move));
 	if (!move?.exists) return 100;
 
 	let score = 100;
+	const isDamaging = move.category !== 'Status';
 
-	// --- Type effectiveness (damaging moves only) ---
-	if (foeTypes.length > 0 && move.category !== 'Status') {
-		const mult = typeMultiplier(ctx.dex, move.type, foeTypes);
-		if (mult === 0) {
+	if (isDamaging) {
+		// --- AI_CheckBadMove: immunity (type or ability) ---
+		if (est.effectiveness === 0) {
 			score += config.immunePenalty;
-		} else if (mult < 1) {
-			score += config.nvePenalty;
-		} else if (mult > 1) {
-			// Real games treat 2x and 4x SE identically in scoring.
-			score += config.seBonus;
+			return score; // immune move: no further bonuses
 		}
-	}
 
-	// --- Ability-based immunity (Levitate vs Ground, etc.) ---
-	if (config.checkAbilityImmunity && foe?.revealedAbility && move.category !== 'Status') {
-		const immuneType = ABILITY_IMMUNITIES[foe.revealedAbility as string];
-		if (immuneType && move.type === immuneType) {
-			score += config.immunePenalty;
+		// --- AI_TryToFaint: KO detection, speed-weighted ---
+		if (est.canKO && foe) {
+			if (weOutspeed(ctx, foe)) {
+				score += config.koFasterBonus;
+			} else if (move.priority > 0) {
+				score += config.priorityKoBonus;
+			} else {
+				score += config.koSlowerBonus;
+			}
 		}
-	}
 
-	// --- STAB ---
-	if (config.stabBonus && move.category !== 'Status' && ownTypes.includes(move.type)) {
-		score += config.stabBonus;
-	}
+		// --- Damage ranking: the single strongest move ---
+		if (est.percent > 0 && est.percent === bestDamagePercent) {
+			score += config.bestDamageBonus;
+		}
 
-	// --- Base power ---
-	if (config.basePowerWeight && move.category !== 'Status') {
-		score += (move.basePower / 10) * config.basePowerWeight;
-	}
-
-	// --- Accuracy ---
-	if (config.accuracyWeight && typeof move.accuracy === 'number' && move.accuracy < 100) {
-		score -= (100 - move.accuracy) * config.accuracyWeight;
+		// --- AI_CheckViability: reckless self-KO ---
+		if (config.explosionNoKoPenalty && SELF_KO_MOVES.has(move.id as string) && !est.canKO) {
+			score += config.explosionNoKoPenalty;
+		}
+		return score;
 	}
 
 	// --- Status moves ---
-	if (move.category === 'Status') {
-		score += config.statusPenalty;
-		if (foe?.status && isStatusInflicting(move)) {
-			score += config.reapplyStatusPenalty;
-		}
+	// Status infliction.
+	if (isStatusInflicting(move)) {
+		if (foe?.status) score += config.reapplyStatusPenalty;
+		else score += config.statusBonus;
 	}
 
-	// --- Recovery at low HP ---
-	if (config.lowHpRecoveryBonus && ownHp < 33 && move.flags?.heal) {
-		score += config.lowHpRecoveryBonus;
+	// Recovery.
+	if (move.flags?.heal) {
+		if (ownHp > 70) score += config.highHpHealPenalty;
+		else if (ownHp < 40) score += config.lowHpHealBonus;
 	}
 
-	// --- Kill pressure on low-HP foe ---
-	if (foeHp > 0 && foeHp < 25 && move.category !== 'Status') {
-		score += config.lowHpFoeKillBonus;
-		if (config.priorityKillBonus && move.priority > 0) {
-			score += config.priorityKillBonus;
-		}
+	// Setup / stat boosts.
+	if (isSelfBoostingMove(move)) {
+		if (ownHp < 40) score += config.setupLowHpPenalty;
+		else if (ownHp >= 70) score += config.setupHighHpBonus;
 	}
 
-	// --- Weather boost AND weakening ---
+	// Redundant weather.
 	if (ctx.view.weather) {
-		const weather = ctx.view.weather as string;
-		if (config.weatherBonus && move.category !== 'Status') {
-			const boostedType = WEATHER_TYPE_BOOST[weather];
-			if (boostedType && move.type === boostedType) {
-				score += config.weatherBonus;
-			}
+		const weatherFromMove = WEATHER_MOVES[move.id as string];
+		if (weatherFromMove && weatherFromMove === (ctx.view.weather as string)) {
+			score += config.redundantWeatherPenalty;
 		}
-		if (config.weatherWeaken && move.category !== 'Status') {
-			const weakenedType = WEATHER_TYPE_WEAKEN[weather];
-			if (weakenedType && move.type === weakenedType) {
-				score += config.weatherWeaken;
-			}
-		}
-		// Don't use a weather move if that weather is already active.
-		if (config.redundantWeatherPenalty) {
-			const weatherFromMove = WEATHER_MOVES[move.id as string];
-			if (weatherFromMove && weatherFromMove === weather) {
-				score += config.redundantWeatherPenalty;
-			}
-		}
-	}
-
-	// --- Self-KO moves (Explosion, Selfdestruct, etc.) ---
-	if (config.selfKoPenalty && SELF_KO_MOVES.has(move.id as string)) {
-		score += config.selfKoPenalty;
-	}
-
-	// --- Setup moves at low HP ---
-	if (config.lowHpSetupPenalty && ownHp < 40 && isSelfBoostingMove(move)) {
-		score += config.lowHpSetupPenalty;
 	}
 
 	return score;
@@ -365,34 +327,30 @@ function scoreMove(
 
 function pickBestMove(ctx: ActiveContext, config: IngameConfig): MoveDecision | null {
 	const foe = ctx.view.primaryFoe();
-	const foeTypes = foe ? effectiveTypes(foe, ctx.dex) : [];
-	const ownTypes = getOwnTypes(ctx);
 	const ownHp = parseHpPercent(ctx.pokemon.condition);
-	const foeHp = foe?.hpPercent ?? 100;
 
 	const regular = ctx.moves.filter(m => !m.maxMove && !m.zMove);
 	const pool = regular.length ? regular : ctx.moves;
 	if (!pool.length) return null;
 
+	const scored = estimatePool(pool, ctx, config, foe);
+	const bestDamagePercent = scored.reduce((max, sc) => Math.max(max, sc.est.percent), 0);
+
 	let bestScore = -Infinity;
 	let bestCands: MoveCandidate[] = [];
-	for (const cand of pool) {
-		const s = scoreMove(cand, ctx, config, foe, foeTypes, ownTypes, ownHp, foeHp);
+	for (const sc of scored) {
+		const s = scoreCandidate(sc, ctx, config, foe, ownHp, bestDamagePercent);
 		if (s > bestScore) {
 			bestScore = s;
-			bestCands = [cand];
+			bestCands = [sc.cand];
 		} else if (s === bestScore) {
-			bestCands.push(cand);
+			bestCands.push(sc.cand);
 		}
 	}
 
 	const candidate = bestCands.length === 1 ? bestCands[0] : ctx.prng.sample(bestCands);
 	return { kind: 'move', candidate };
 }
-
-// ----------------------------------------------------------------------
-// Core scoring policy (gen 3+)
-// ----------------------------------------------------------------------
 
 export function ingameScoreMove(config: IngameConfig): ActionPolicy {
 	return (ctx: ActiveContext) => pickBestMove(ctx, config);
@@ -417,26 +375,20 @@ export function megaImmediately(config: IngameConfig): ActionPolicy {
 export function useZMoveAggressively(config: IngameConfig): ActionPolicy {
 	return (ctx: ActiveContext) => {
 		if (!ctx.canZMove) return null;
-
 		const zMoves = ctx.moves.filter(m => m.zMove);
 		if (!zMoves.length) return null;
 
 		const foe = ctx.view.primaryFoe();
-		const foeTypes = foe ? effectiveTypes(foe, ctx.dex) : [];
-		const ownTypes = getOwnTypes(ctx);
 		const ownHp = parseHpPercent(ctx.pokemon.condition);
-		const foeHp = foe?.hpPercent ?? 100;
+		const scored = estimatePool(zMoves, ctx, config, foe);
+		const bestDamagePercent = scored.reduce((max, sc) => Math.max(max, sc.est.percent), 0);
 
 		let bestScore = -Infinity;
 		let bestCand: MoveCandidate | null = null;
-		for (const cand of zMoves) {
-			const s = scoreMove(cand, ctx, config, foe, foeTypes, ownTypes, ownHp, foeHp);
-			if (s > bestScore) {
-				bestScore = s;
-				bestCand = cand;
-			}
+		for (const sc of scored) {
+			const s = scoreCandidate(sc, ctx, config, foe, ownHp, bestDamagePercent);
+			if (s > bestScore) { bestScore = s; bestCand = sc.cand; }
 		}
-
 		if (!bestCand) return null;
 		return { kind: 'move', candidate: bestCand };
 	};
@@ -457,21 +409,16 @@ export function dynamaxOnLastMon(config: IngameConfig): ActionPolicy {
 		}
 
 		const foe = ctx.view.primaryFoe();
-		const foeTypes = foe ? effectiveTypes(foe, ctx.dex) : [];
-		const ownTypes = getOwnTypes(ctx);
 		const ownHp = parseHpPercent(ctx.pokemon.condition);
-		const foeHp = foe?.hpPercent ?? 100;
+		const scored = estimatePool(maxMoves, ctx, config, foe);
+		const bestDamagePercent = scored.reduce((max, sc) => Math.max(max, sc.est.percent), 0);
 
 		let bestScore = -Infinity;
 		let bestCand: MoveCandidate | null = null;
-		for (const cand of maxMoves) {
-			const s = scoreMove(cand, ctx, config, foe, foeTypes, ownTypes, ownHp, foeHp);
-			if (s > bestScore) {
-				bestScore = s;
-				bestCand = cand;
-			}
+		for (const sc of scored) {
+			const s = scoreCandidate(sc, ctx, config, foe, ownHp, bestDamagePercent);
+			if (s > bestScore) { bestScore = s; bestCand = sc.cand; }
 		}
-
 		if (!bestCand) return null;
 		return { kind: 'move', candidate: bestCand, formChange: 'dynamax' };
 	};

@@ -74,6 +74,13 @@ export class BattleView {
 	terrain?: ID;
 	pseudoWeather: Set<ID>;
 	turn: number;
+	/**
+	 * Lines received before we know which side we're on. The lead Pokemon's
+	 * switch-in lines arrive before the first request (which is what tells us
+	 * `ourSide`), so without buffering they'd be dropped and the opening foe
+	 * would be invisible. Replayed in order by `setOurSide`.
+	 */
+	private preSideBuffer: string[];
 
 	constructor(dex: ModdedDex = Dex) {
 		this.dex = dex;
@@ -84,6 +91,7 @@ export class BattleView {
 		this.sideState = new Map();
 		this.pseudoWeather = new Set();
 		this.turn = 0;
+		this.preSideBuffer = [];
 	}
 
 	/** Set the gen explicitly (e.g. when the caller knows the format). */
@@ -93,9 +101,17 @@ export class BattleView {
 		this.dex = Dex.forGen(gen);
 	}
 
-	/** Note which side we're playing. Allows `isFoe` to work correctly. */
+	/**
+	 * Note which side we're playing. Allows `isFoe` to work correctly, then
+	 * replays any lines buffered before we knew our side (e.g. the lead
+	 * Pokemon's switch-in) so the opening matchup is recorded.
+	 */
 	setOurSide(side: SideID) {
+		if (this.ourSide !== null) return;
 		this.ourSide = side;
+		const buffered = this.preSideBuffer;
+		this.preSideBuffer = [];
+		for (const line of buffered) this.dispatchLine(line);
 	}
 
 	isFoe(side: SideID): boolean {
@@ -133,6 +149,17 @@ export class BattleView {
 	 */
 	receiveLine(line: string) {
 		if (!line.startsWith('|')) return;
+		// Until the first request tells us our side, buffer every line; the
+		// side-dependent handlers can't tell foe from ally yet. setOurSide
+		// replays the buffer in order once we know.
+		if (this.ourSide === null) {
+			this.preSideBuffer.push(line);
+			return;
+		}
+		this.dispatchLine(line);
+	}
+
+	private dispatchLine(line: string) {
 		const parts = line.slice(1).split('|');
 		const cmd = parts[0];
 		switch (cmd) {
