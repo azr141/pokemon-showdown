@@ -10,7 +10,12 @@
  */
 
 import type { PolicyChain } from '../plugin-player-ai/types';
-import { defaultChain, getChain, gen9Chain } from '../plugin-player-ai/gens';
+import {
+	defaultChain, getChain, gen9Chain, getIngameChain,
+	gen1IngameChain, gen2IngameChain, gen3IngameChain,
+	gen4IngameChain, gen5IngameChain, gen6IngameChain,
+	gen7IngameChain, gen8IngameChain, gen9IngameChain,
+} from '../plugin-player-ai/gens';
 
 export type ChainBuilder = (gen: number) => PolicyChain;
 
@@ -18,6 +23,16 @@ const registry: Record<string, ChainBuilder> = {
 	random: () => defaultChain(),
 	default: gen => getChain(gen),
 	gen9tactical: () => gen9Chain(),
+	ingame: gen => getIngameChain(gen),
+	gen1ingame: () => gen1IngameChain(),
+	gen2ingame: () => gen2IngameChain(),
+	gen3ingame: () => gen3IngameChain(),
+	gen4ingame: () => gen4IngameChain(),
+	gen5ingame: () => gen5IngameChain(),
+	gen6ingame: () => gen6IngameChain(),
+	gen7ingame: () => gen7IngameChain(),
+	gen8ingame: () => gen8IngameChain(),
+	gen9ingame: () => gen9IngameChain(),
 };
 
 /** The id used when a scenario marks a slot as human-controlled. */

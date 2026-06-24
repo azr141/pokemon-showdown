@@ -11,6 +11,7 @@
 
 import type { PolicyChain } from '../types';
 import { superEffectiveMove, switchToResist, randomAction, randomForceSwitch, defaultTeamPreview, type RandomActionOptions } from '../policies';
+import { ingameScoreMove, teraOnLastMon, DEFAULT_CONFIG } from '../policies-ingame';
 
 export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
 	return {
@@ -19,6 +20,14 @@ export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
 			switchToResist,
 			randomAction(opts),
 		],
+		forceSwitch: [randomForceSwitch],
+		teamPreview: [defaultTeamPreview],
+	};
+}
+
+export function gen9IngameChain(): PolicyChain {
+	return {
+		action: [teraOnLastMon(DEFAULT_CONFIG), ingameScoreMove(DEFAULT_CONFIG), randomAction()],
 		forceSwitch: [randomForceSwitch],
 		teamPreview: [defaultTeamPreview],
 	};

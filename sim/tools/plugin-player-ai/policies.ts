@@ -104,14 +104,14 @@ export const defaultTeamPreview: TeamPreviewPolicy = () => 'default';
  * Effectiveness multiplier for `moveType` against `targetTypes` using the
  * dex's type chart. Returns 0 for immunity, otherwise 0.25/0.5/1/2/4 etc.
  */
-function typeMultiplier(dex: import('../../dex').ModdedDex, moveType: string, targetTypes: readonly string[]): number {
+export function typeMultiplier(dex: import('../../dex').ModdedDex, moveType: string, targetTypes: readonly string[]): number {
 	if (!dex.getImmunity(moveType, targetTypes as string[])) return 0;
 	const eff = dex.getEffectiveness(moveType, targetTypes as string[]);
 	return Math.pow(2, eff);
 }
 
 /** Types a foe is effectively typed as right now (accounts for tera). */
-function effectiveTypes(foe: FoePokemon, dex: import('../../dex').ModdedDex): readonly string[] {
+export function effectiveTypes(foe: FoePokemon, dex: import('../../dex').ModdedDex): readonly string[] {
 	if (foe.terastallized) {
 		// Capitalize: type ids are lowercase in our store but the chart keys
 		// expect 'Water', 'Fire' etc.
