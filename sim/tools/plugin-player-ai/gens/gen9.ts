@@ -11,7 +11,7 @@
 
 import type { PolicyChain } from '../types';
 import { superEffectiveMove, switchToResist, randomAction, randomForceSwitch, defaultTeamPreview, type RandomActionOptions } from '../policies';
-import { ingameScoreMove, teraOnLastMon, DEFAULT_CONFIG } from '../policies-ingame';
+import { ingameScoreMove, teraOnLastMon, GEN4_CONFIG } from '../policies-ingame';
 
 export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
 	return {
@@ -25,9 +25,15 @@ export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
 	};
 }
 
+/**
+ * Gen 9 in-game AI — full scoring + Terastallization.
+ *
+ * Same scoring as gen 4/5. NPCs terastallize their LAST Pokemon (ace).
+ * Same trigger pattern as Dynamax — no remaining switches. No switching.
+ */
 export function gen9IngameChain(): PolicyChain {
 	return {
-		action: [teraOnLastMon(DEFAULT_CONFIG), ingameScoreMove(DEFAULT_CONFIG), randomAction()],
+		action: [teraOnLastMon(GEN4_CONFIG), ingameScoreMove(GEN4_CONFIG), randomAction()],
 		forceSwitch: [randomForceSwitch],
 		teamPreview: [defaultTeamPreview],
 	};

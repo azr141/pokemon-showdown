@@ -1,23 +1,24 @@
+/**
+ * Gen 1 in-game AI — weighted random.
+ *
+ * Real Gen 1 "Good AI" (gym leaders, E4) uses weighted random selection
+ * based on type effectiveness. Moves are NOT scored — they're sampled
+ * with weights proportional to how effective they are:
+ *   - Immune:          excluded (weight 0)
+ *   - Not very effective: weight 1
+ *   - Neutral:           weight 2
+ *   - Super effective:   weight 6
+ *
+ * No STAB, no base power, no status logic, no switching.
+ */
+
 import type { PolicyChain } from '../types';
 import { randomAction, randomForceSwitch, defaultTeamPreview } from '../policies';
-import { ingameScoreMove, type IngameConfig } from '../policies-ingame';
-
-const GEN1_CONFIG: IngameConfig = {
-	immunePenalty: -100,
-	nvePenalty: -5,
-	seBonus: 5,
-	stabBonus: 0,
-	basePowerWeight: 0,
-	statusPenalty: 0,
-	reapplyStatusPenalty: 0,
-	lowHpRecoveryBonus: 0,
-	lowHpFoeKillBonus: 0,
-	weatherBonus: 0,
-};
+import { gen1WeightedRandom } from '../policies-ingame';
 
 export function gen1IngameChain(): PolicyChain {
 	return {
-		action: [ingameScoreMove(GEN1_CONFIG), randomAction()],
+		action: [gen1WeightedRandom(), randomAction()],
 		forceSwitch: [randomForceSwitch],
 		teamPreview: [defaultTeamPreview],
 	};

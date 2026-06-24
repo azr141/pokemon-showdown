@@ -1,19 +1,16 @@
+/**
+ * Gen 3 in-game AI — flag-based scoring.
+ *
+ * RSE introduced trainer AI flags (bitmask). The "check viability" flag
+ * enables a basic score system: penalize immune/NVE moves, bonus for SE,
+ * penalize reapplying status the foe already has, small kill bonus.
+ * No STAB weighting, no base power consideration, no accuracy check,
+ * no ability immunity awareness. No switching.
+ */
+
 import type { PolicyChain } from '../types';
 import { randomAction, randomForceSwitch, defaultTeamPreview } from '../policies';
-import { ingameScoreMove, type IngameConfig } from '../policies-ingame';
-
-const GEN3_CONFIG: IngameConfig = {
-	immunePenalty: -1000,
-	nvePenalty: -10,
-	seBonus: 15,
-	stabBonus: 5,
-	basePowerWeight: 0.3,
-	statusPenalty: -10,
-	reapplyStatusPenalty: -50,
-	lowHpRecoveryBonus: 0,
-	lowHpFoeKillBonus: 5,
-	weatherBonus: 0,
-};
+import { ingameScoreMove, GEN3_CONFIG } from '../policies-ingame';
 
 export function gen3IngameChain(): PolicyChain {
 	return {

@@ -1,23 +1,19 @@
+/**
+ * Gen 2 in-game AI — weighted random.
+ *
+ * Same as Gen 1: weighted random based on type effectiveness.
+ * Gen 2 added held items and new types (Dark, Steel) but the trainer
+ * AI logic remained fundamentally the same weighted-random system.
+ * No scoring, no STAB, no switching.
+ */
+
 import type { PolicyChain } from '../types';
 import { randomAction, randomForceSwitch, defaultTeamPreview } from '../policies';
-import { ingameScoreMove, type IngameConfig } from '../policies-ingame';
-
-const GEN2_CONFIG: IngameConfig = {
-	immunePenalty: -100,
-	nvePenalty: -5,
-	seBonus: 5,
-	stabBonus: 0,
-	basePowerWeight: 0,
-	statusPenalty: 0,
-	reapplyStatusPenalty: 0,
-	lowHpRecoveryBonus: 0,
-	lowHpFoeKillBonus: 0,
-	weatherBonus: 0,
-};
+import { gen1WeightedRandom } from '../policies-ingame';
 
 export function gen2IngameChain(): PolicyChain {
 	return {
-		action: [ingameScoreMove(GEN2_CONFIG), randomAction()],
+		action: [gen1WeightedRandom(), randomAction()],
 		forceSwitch: [randomForceSwitch],
 		teamPreview: [defaultTeamPreview],
 	};
