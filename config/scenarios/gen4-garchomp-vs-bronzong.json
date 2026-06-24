@@ -1,0 +1,88 @@
+{
+  "title": "DPPt — Garchomp vs Bronzong",
+  "description": "Gen 4 OU battle. Garchomp faces Bronzong with Stealth Rock up.",
+  "format": "gen4ou",
+  "seed": "10,20,30,40",
+  "p1": {
+    "name": "Cynthia",
+    "ai": "human",
+    "team": [
+      {
+        "species": "Garchomp",
+        "item": "Life Orb",
+        "ability": "Sand Veil",
+        "moves": ["Earthquake", "Outrage", "Swords Dance", "Stone Edge"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Heatran",
+        "item": "Leftovers",
+        "ability": "Flash Fire",
+        "moves": ["Lava Plume", "Earth Power", "Stealth Rock", "Toxic"],
+        "nature": "Calm",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 0, "def": 0, "spa": 0, "spd": 252, "spe": 4},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Starmie",
+        "item": "Life Orb",
+        "ability": "Natural Cure",
+        "moves": ["Hydro Pump", "Thunderbolt", "Ice Beam", "Rapid Spin"],
+        "nature": "Timid",
+        "gender": "N",
+        "evs": {"hp": 0, "atk": 0, "def": 0, "spa": 252, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "Rival",
+    "ai": "pokemon",
+    "team": [
+      {
+        "species": "Bronzong",
+        "item": "Leftovers",
+        "ability": "Levitate",
+        "moves": ["Stealth Rock", "Gyro Ball", "Earthquake", "Explosion"],
+        "nature": "Sassy",
+        "gender": "N",
+        "evs": {"hp": 252, "atk": 0, "def": 168, "spa": 0, "spd": 88, "spe": 0},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 0},
+        "level": 100
+      },
+      {
+        "species": "Gyarados",
+        "item": "Leftovers",
+        "ability": "Intimidate",
+        "moves": ["Waterfall", "Dragon Dance", "Taunt", "Bounce"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 88, "def": 0, "spa": 0, "spd": 0, "spe": 168},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Blissey",
+        "item": "Leftovers",
+        "ability": "Natural Cure",
+        "moves": ["Softboiled", "Toxic", "Seismic Toss", "Thunder Wave"],
+        "nature": "Bold",
+        "gender": "F",
+        "evs": {"hp": 252, "atk": 0, "def": 252, "spa": 0, "spd": 4, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {"p1": [], "p2": []}
+  },
+  "openTeamsheet": true
+}

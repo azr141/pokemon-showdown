@@ -1,0 +1,88 @@
+{
+  "title": "SM -- Tapu Lele vs Toxapex",
+  "description": "Gen 7 OU battle. Tapu Lele faces Toxapex on Psychic Terrain.",
+  "format": "gen7ou",
+  "seed": "13,24,35,46",
+  "p1": {
+    "name": "Elio",
+    "ai": "human",
+    "team": [
+      {
+        "species": "Tapu Lele",
+        "item": "Choice Specs",
+        "ability": "Psychic Surge",
+        "moves": ["Psychic", "Moonblast", "Focus Blast", "Psyshock"],
+        "nature": "Timid",
+        "gender": "N",
+        "evs": {"hp": 0, "atk": 0, "def": 0, "spa": 252, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Kartana",
+        "item": "Choice Scarf",
+        "ability": "Beast Boost",
+        "moves": ["Leaf Blade", "Smart Strike", "Sacred Sword", "Knock Off"],
+        "nature": "Jolly",
+        "gender": "N",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Greninja-Ash",
+        "item": "Choice Specs",
+        "ability": "Battle Bond",
+        "moves": ["Water Shuriken", "Dark Pulse", "Hydro Pump", "Spikes"],
+        "nature": "Timid",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 0, "def": 0, "spa": 252, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "Gladion",
+    "ai": "pokemon",
+    "team": [
+      {
+        "species": "Toxapex",
+        "item": "Black Sludge",
+        "ability": "Regenerator",
+        "moves": ["Scald", "Toxic Spikes", "Recover", "Haze"],
+        "nature": "Bold",
+        "gender": "F",
+        "evs": {"hp": 252, "atk": 0, "def": 252, "spa": 0, "spd": 4, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Celesteela",
+        "item": "Leftovers",
+        "ability": "Beast Boost",
+        "moves": ["Heavy Slam", "Flamethrower", "Leech Seed", "Protect"],
+        "nature": "Sassy",
+        "gender": "N",
+        "evs": {"hp": 252, "atk": 0, "def": 4, "spa": 0, "spd": 252, "spe": 0},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 0},
+        "level": 100
+      },
+      {
+        "species": "Magearna",
+        "item": "Assault Vest",
+        "ability": "Soul-Heart",
+        "moves": ["Fleur Cannon", "Volt Switch", "Focus Blast", "Flash Cannon"],
+        "nature": "Modest",
+        "gender": "N",
+        "evs": {"hp": 248, "atk": 0, "def": 0, "spa": 252, "spd": 8, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {"p1": [], "p2": []}
+  },
+  "openTeamsheet": true
+}

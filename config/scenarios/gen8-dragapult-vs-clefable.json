@@ -1,0 +1,88 @@
+{
+  "title": "SwSh -- Dragapult vs Clefable",
+  "description": "Gen 8 OU battle. Dragapult faces Clefable in a speed vs bulk matchup.",
+  "format": "gen8ou",
+  "seed": "14,25,36,47",
+  "p1": {
+    "name": "Victor",
+    "ai": "human",
+    "team": [
+      {
+        "species": "Dragapult",
+        "item": "Choice Specs",
+        "ability": "Infiltrator",
+        "moves": ["Shadow Ball", "Draco Meteor", "Fire Blast", "U-turn"],
+        "nature": "Timid",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 0, "def": 0, "spa": 252, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Corviknight",
+        "item": "Leftovers",
+        "ability": "Pressure",
+        "moves": ["Brave Bird", "Body Press", "Defog", "Roost"],
+        "nature": "Impish",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 0, "def": 168, "spa": 0, "spd": 88, "spe": 0},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Rillaboom",
+        "item": "Choice Band",
+        "ability": "Grassy Surge",
+        "moves": ["Grassy Glide", "Wood Hammer", "Knock Off", "U-turn"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "Leon",
+    "ai": "pokemon",
+    "team": [
+      {
+        "species": "Clefable",
+        "item": "Leftovers",
+        "ability": "Magic Guard",
+        "moves": ["Moonblast", "Flamethrower", "Stealth Rock", "Soft-Boiled"],
+        "nature": "Bold",
+        "gender": "F",
+        "evs": {"hp": 252, "atk": 0, "def": 160, "spa": 0, "spd": 96, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Toxapex",
+        "item": "Black Sludge",
+        "ability": "Regenerator",
+        "moves": ["Scald", "Knock Off", "Recover", "Toxic Spikes"],
+        "nature": "Bold",
+        "gender": "F",
+        "evs": {"hp": 252, "atk": 0, "def": 252, "spa": 0, "spd": 4, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Cinderace",
+        "item": "Heavy-Duty Boots",
+        "ability": "Libero",
+        "moves": ["Pyro Ball", "High Jump Kick", "U-turn", "Court Change"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {"p1": [], "p2": []}
+  },
+  "openTeamsheet": true
+}

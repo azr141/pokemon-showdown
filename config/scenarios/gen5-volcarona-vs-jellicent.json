@@ -1,0 +1,88 @@
+{
+  "title": "BW — Volcarona vs Jellicent",
+  "description": "Gen 5 OU battle. Volcarona tries to sweep past a bulky Water.",
+  "format": "gen5ou",
+  "seed": "11,22,33,44",
+  "p1": {
+    "name": "Hilbert",
+    "ai": "human",
+    "team": [
+      {
+        "species": "Volcarona",
+        "item": "Leftovers",
+        "ability": "Flame Body",
+        "moves": ["Quiver Dance", "Fire Blast", "Bug Buzz", "Hidden Power Ground"],
+        "nature": "Timid",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 0, "def": 0, "spa": 252, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 30, "spd": 30, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Ferrothorn",
+        "item": "Leftovers",
+        "ability": "Iron Barbs",
+        "moves": ["Spikes", "Leech Seed", "Power Whip", "Gyro Ball"],
+        "nature": "Relaxed",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 0, "def": 252, "spa": 0, "spd": 4, "spe": 0},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 0},
+        "level": 100
+      },
+      {
+        "species": "Excadrill",
+        "item": "Air Balloon",
+        "ability": "Mold Breaker",
+        "moves": ["Earthquake", "Iron Head", "Rock Slide", "Swords Dance"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "N",
+    "ai": "pokemon",
+    "team": [
+      {
+        "species": "Jellicent",
+        "item": "Leftovers",
+        "ability": "Water Absorb",
+        "moves": ["Scald", "Shadow Ball", "Recover", "Toxic"],
+        "nature": "Bold",
+        "gender": "M",
+        "evs": {"hp": 248, "atk": 0, "def": 216, "spa": 0, "spd": 44, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Reuniclus",
+        "item": "Life Orb",
+        "ability": "Magic Guard",
+        "moves": ["Calm Mind", "Psychic", "Focus Blast", "Recover"],
+        "nature": "Bold",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 0, "def": 252, "spa": 4, "spd": 0, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Gliscor",
+        "item": "Toxic Orb",
+        "ability": "Poison Heal",
+        "moves": ["Earthquake", "Ice Fang", "Swords Dance", "Protect"],
+        "nature": "Impish",
+        "gender": "M",
+        "evs": {"hp": 244, "atk": 0, "def": 40, "spa": 0, "spd": 0, "spe": 224},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {"p1": [], "p2": []}
+  },
+  "openTeamsheet": true
+}
