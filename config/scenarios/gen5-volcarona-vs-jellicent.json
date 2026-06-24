@@ -44,7 +44,7 @@
   },
   "p2": {
     "name": "N",
-    "ai": "default",
+    "ai": "ingame",
     "team": [
       {
         "species": "Jellicent",

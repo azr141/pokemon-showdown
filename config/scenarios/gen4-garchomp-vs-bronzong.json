@@ -44,7 +44,7 @@
   },
   "p2": {
     "name": "Rival",
-    "ai": "default",
+    "ai": "ingame",
     "team": [
       {
         "species": "Bronzong",
