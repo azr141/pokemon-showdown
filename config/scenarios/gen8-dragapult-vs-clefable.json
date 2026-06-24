@@ -44,7 +44,7 @@
   },
   "p2": {
     "name": "Leon",
-    "ai": "pokemon",
+    "ai": "default",
     "team": [
       {
         "species": "Clefable",

@@ -44,7 +44,7 @@
   },
   "p2": {
     "name": "Lysandre",
-    "ai": "pokemon",
+    "ai": "default",
     "team": [
       {
         "species": "Aegislash",

@@ -44,7 +44,7 @@
   },
   "p2": {
     "name": "Gladion",
-    "ai": "pokemon",
+    "ai": "default",
     "team": [
       {
         "species": "Toxapex",
