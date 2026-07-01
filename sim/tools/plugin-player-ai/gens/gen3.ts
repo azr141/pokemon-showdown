@@ -10,7 +10,9 @@
  * Gen 3 is deliberately LOOSE: the strongest non-KO move gets only a +1
  * preference (`bestDamageBonus`), so when nothing KOs, Gen 3 trainers
  * frequently pick sub-optimal moves — matching the games' reputation.
- * No ability-immunity awareness, no Explosion caution. No switching.
+ * It does avoid moves the foe's ability nullifies (Levitate, the absorb
+ * abilities, Wonder Guard — the Gen 3 set), like the real RSE AI. No
+ * Explosion caution. No switching.
  */
 
 import type { PolicyChain } from '../types';

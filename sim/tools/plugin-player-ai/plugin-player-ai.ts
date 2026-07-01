@@ -36,6 +36,13 @@ export interface PluginPlayerOptions {
 	dex?: ModdedDex;
 	/** Seed for the player's PRNG (used by random fallback policies). */
 	seed?: PRNG | PRNGSeed | null;
+	/**
+	 * The opponent's full team. Handed to the BattleView so the AI can
+	 * calculate damage with the foe's real stats and know its ability — the
+	 * mainline AI is omniscient about the current foe. Optional: without it
+	 * the AI falls back to estimating from base stats and revealed info.
+	 */
+	opponentSets?: PokemonSet[];
 }
 
 export class PluginPlayerAI extends BattlePlayer {
@@ -57,6 +64,7 @@ export class PluginPlayerAI extends BattlePlayer {
 		const dex = options.dex ?? (options.gen ? Dex.forGen(options.gen) : Dex);
 		this.view = new BattleView(dex);
 		if (options.gen) this.view.setGen(options.gen);
+		if (options.opponentSets) this.view.setFoeKnownSets(options.opponentSets);
 		// `chain` may be filled in lazily by chooseChain() once we know the gen.
 		this.chain = options.chain!;
 		this.resolvedChain = options.chain ?? null;

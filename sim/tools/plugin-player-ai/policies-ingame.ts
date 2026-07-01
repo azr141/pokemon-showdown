@@ -77,17 +77,23 @@ const WEATHER_MOVES: Record<string, string> = {
 	sandstorm: 'sandstorm', hail: 'hail', snowscape: 'snow', chillyreception: 'snow',
 };
 
-/** Abilities that grant a full type immunity the AI (Gen 4+) respects. */
-const ABILITY_IMMUNITIES: Record<string, string> = {
-	levitate: 'Ground',
-	flashfire: 'Fire',
-	waterabsorb: 'Water',
-	voltabsorb: 'Electric',
-	lightningrod: 'Electric',
-	stormdrain: 'Water',
-	sapsipper: 'Grass',
-	motordrive: 'Electric',
-	dryskin: 'Water',
+/**
+ * Abilities that grant a full type immunity, gated by the generation the
+ * immunity effect actually existed. Lightning Rod / Storm Drain only redirect
+ * (no immunity) before Gen 5; Motor Drive / Dry Skin are Gen 4; Sap Sipper is
+ * Gen 5. The mainline AI "cheats" and avoids these moves using the foe's true
+ * ability, which is why it won't Earthquake a Levitate mon before it's shown.
+ */
+const ABILITY_IMMUNITY: Record<string, { type: string, sinceGen: number }> = {
+	levitate: { type: 'Ground', sinceGen: 3 },
+	flashfire: { type: 'Fire', sinceGen: 3 },
+	waterabsorb: { type: 'Water', sinceGen: 3 },
+	voltabsorb: { type: 'Electric', sinceGen: 3 },
+	motordrive: { type: 'Electric', sinceGen: 4 },
+	dryskin: { type: 'Water', sinceGen: 4 },
+	stormdrain: { type: 'Water', sinceGen: 5 },
+	lightningrod: { type: 'Electric', sinceGen: 5 },
+	sapsipper: { type: 'Grass', sinceGen: 5 },
 };
 
 const SELF_KO_MOVES = new Set([
@@ -105,9 +111,25 @@ function isSelfBoostingMove(move: AnyObject): boolean {
 	return false;
 }
 
-function abilityAbsorbs(foe: FoePokemon | undefined, moveType: string): boolean {
-	if (!foe?.revealedAbility) return false;
-	return ABILITY_IMMUNITIES[foe.revealedAbility as string] === moveType;
+/** The foe's ability — true value from the known set, else revealed. */
+function foeAbility(foe: FoePokemon, ctx: ActiveContext): ID | undefined {
+	return ctx.view.foeKnownSets.get(foe.speciesId)?.ability ?? foe.revealedAbility;
+}
+
+/**
+ * Whether the foe's ability nullifies this damaging move. Covers gen-gated
+ * type-immunity abilities plus Wonder Guard (only super-effective hits land).
+ * `effectiveness` is the move's type multiplier (needed for Wonder Guard).
+ */
+function abilityMakesImmune(
+	foe: FoePokemon, ctx: ActiveContext, moveType: string, effectiveness: number
+): boolean {
+	const ability = foeAbility(foe, ctx);
+	if (!ability) return false;
+	const entry = ABILITY_IMMUNITY[ability as string];
+	if (entry && entry.sinceGen <= ctx.gen && entry.type === moveType) return true;
+	if (ability === 'wonderguard' && effectiveness < 2) return true;
+	return false;
 }
 
 // ----------------------------------------------------------------------
@@ -191,7 +213,8 @@ export interface IngameConfig {
 /**
  * Gen 3 (RSE) — loose. KO detection drives play, but with only a slight
  * preference for the strongest non-KO move, so sub-optimal picks are common.
- * No ability-immunity awareness; no Explosion caution.
+ * Avoids ability-nullified moves (Levitate/absorbs/Wonder Guard, Gen 3 set).
+ * No Explosion caution.
  */
 export const GEN3_CONFIG: IngameConfig = {
 	koFasterBonus: 6,
@@ -207,7 +230,10 @@ export const GEN3_CONFIG: IngameConfig = {
 	setupHighHpBonus: 2,
 	setupLowHpPenalty: -8,
 	redundantWeatherPenalty: -10,
-	checkAbilityImmunity: false,
+	// RSE's AI_CheckBadMove already avoids moves the target's ability nullifies
+	// (Levitate, the absorb abilities, Wonder Guard). The gen-gated table keeps
+	// it to abilities whose immunity existed in Gen 3.
+	checkAbilityImmunity: true,
 };
 
 /**
@@ -246,7 +272,7 @@ function estimatePool(
 		let est = estimateDamage(cand, ctx, foe);
 		if (config.checkAbilityImmunity && est.percent > 0) {
 			const move = ctx.dex.moves.get(cand.raw.id ?? toID(cand.move));
-			if (move && abilityAbsorbs(foe, move.type)) {
+			if (move && abilityMakesImmune(foe, ctx, move.type, est.effectiveness)) {
 				est = { percent: 0, canKO: false, effectiveness: 0 };
 			}
 		}

@@ -49,6 +49,51 @@ export interface SideState {
 }
 
 /**
+ * The opponent's true set, keyed by species id. The mainline AI is
+ * omniscient about the foe's exact stats and ability (it calculates damage
+ * with the real defender stats and refuses moves the foe's ability nullifies
+ * even before they're revealed). We reproduce that by handing the AI the
+ * opposing team up front; damage estimation and ability-immunity checks use
+ * these when available, falling back to protocol-revealed info otherwise.
+ */
+export interface KnownSet {
+	level: number;
+	ability: ID;
+	item: ID;
+	/** Real computed stats (hp/atk/def/spa/spd/spe). */
+	stats: StatsTable;
+}
+
+/** Standard stat formula. Neutral nature unless the set specifies one. */
+function computeKnownStats(base: StatsTable, set: PokemonSet, dex: ModdedDex, level: number): StatsTable {
+	const ivs = set.ivs || {};
+	const evs = set.evs || {};
+	const iv = (s: StatID) => (ivs[s] ?? 31);
+	const ev = (s: StatID) => (evs[s] ?? 0);
+	const raw = (s: StatID) => Math.floor((2 * base[s] + iv(s) + Math.floor(ev(s) / 4)) * level / 100) + 5;
+
+	const nature = set.nature ? dex.natures.get(set.nature) : null;
+	const withNature = (s: StatID, val: number) => {
+		if (nature?.plus === s) return Math.floor(val * 1.1);
+		if (nature?.minus === s) return Math.floor(val * 0.9);
+		return val;
+	};
+
+	const hp = base.hp === 1 ?
+		1 :
+		Math.floor((2 * base.hp + iv('hp') + Math.floor(ev('hp') / 4)) * level / 100) + level + 10;
+
+	return {
+		hp,
+		atk: withNature('atk', raw('atk')),
+		def: withNature('def', raw('def')),
+		spa: withNature('spa', raw('spa')),
+		spd: withNature('spd', raw('spd')),
+		spe: withNature('spe', raw('spe')),
+	};
+}
+
+/**
  * Incremental view of the battle, derived from protocol log lines.
  *
  * Call `receiveLine` for each `|...`-prefixed line as it arrives. The view
@@ -81,6 +126,8 @@ export class BattleView {
 	 * would be invisible. Replayed in order by `setOurSide`.
 	 */
 	private preSideBuffer: string[];
+	/** The opponent's true sets, keyed by species id (see {@link KnownSet}). */
+	readonly foeKnownSets: Map<ID, KnownSet>;
 
 	constructor(dex: ModdedDex = Dex) {
 		this.dex = dex;
@@ -92,6 +139,27 @@ export class BattleView {
 		this.pseudoWeather = new Set();
 		this.turn = 0;
 		this.preSideBuffer = [];
+		this.foeKnownSets = new Map();
+	}
+
+	/**
+	 * Register the opponent's team so the AI can calculate damage with the
+	 * foe's real defensive stats and know its ability — matching the mainline
+	 * AI's omniscience about the current foe.
+	 */
+	setFoeKnownSets(sets: PokemonSet[]) {
+		for (const set of sets) {
+			const speciesId = toID(set.species || set.name);
+			const species = this.dex.species.get(speciesId);
+			if (!species?.exists) continue;
+			const level = set.level || 100;
+			this.foeKnownSets.set(species.id, {
+				level,
+				ability: toID(set.ability),
+				item: toID(set.item),
+				stats: computeKnownStats(species.baseStats, set, this.dex, level),
+			});
+		}
 	}
 
 	/** Set the gen explicitly (e.g. when the caller knows the format). */

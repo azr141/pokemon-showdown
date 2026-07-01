@@ -83,8 +83,10 @@ export async function playScenario(
 
 	const chainP1 = getAIChain(scenario.p1.ai ?? 'default', gen);
 	const chainP2 = getAIChain(scenario.p2.ai ?? 'default', gen);
-	const p1 = new PluginPlayerAI(streams.p1, { chain: chainP1, gen });
-	const p2 = new PluginPlayerAI(streams.p2, { chain: chainP2, gen });
+	// Each side's AI is omniscient about the opposing team (like the mainline
+	// games' AI knows the current foe's real stats and ability).
+	const p1 = new PluginPlayerAI(streams.p1, { chain: chainP1, gen, opponentSets: scenario.p2.team });
+	const p2 = new PluginPlayerAI(streams.p2, { chain: chainP2, gen, opponentSets: scenario.p1.team });
 
 	void p1.start();
 	void p2.start();
