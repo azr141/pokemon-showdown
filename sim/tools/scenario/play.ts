@@ -63,10 +63,19 @@ export async function playScenario(
 
 	// Strip Team Preview for scenario play: the team order is already fixed
 	// by the JSON, so team preview would just be a no-op `default` round-trip
-	// that delays our field/volatile application past turn 1.
-	const formatId = scenario.format.includes('@@@') ?
-		`${scenario.format},!Team Preview` :
-		`${scenario.format}@@@!Team Preview`;
+	// that delays our field/volatile application past turn 1. Only strip it
+	// when the format actually has the rule — appending '!Team Preview' to a
+	// format without it (gen 1-4) throws during Battle construction.
+	let formatId = scenario.format;
+	try {
+		if (Dex.formats.getRuleTable(format).has('teampreview')) {
+			formatId = scenario.format.includes('@@@') ?
+				`${scenario.format},!Team Preview` :
+				`${scenario.format}@@@!Team Preview`;
+		}
+	} catch {
+		// Unresolvable rule table (exotic custom rules) — leave format as-is.
+	}
 
 	const streams = getPlayerStreams(new BattleStream({
 		noCatch: true,

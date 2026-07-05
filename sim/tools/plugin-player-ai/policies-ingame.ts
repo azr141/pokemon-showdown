@@ -291,6 +291,22 @@ function scoreCandidate(
 	let score = 100;
 	const isDamaging = move.category !== 'Status';
 
+	// --- AI_CheckBadMove: moves whose fail condition is currently true ---
+	// The real AI knows when a move simply cannot work and treats it like a
+	// bad move (same -10 as an immune hit in the pokeemerald sources).
+	{
+		const condParts = (ctx.pokemon.condition || '').split(' ');
+		const ownStatus = condParts.length > 1 && condParts[1] !== 'fnt' ? condParts[1] : undefined;
+		let willFail = false;
+		if ((move.id === 'dreameater' || move.id === 'nightmare') && foe && foe.status !== 'slp') willFail = true;
+		if ((move.id === 'snore' || move.id === 'sleeptalk') && ownStatus !== 'slp') willFail = true;
+		if (move.id === 'bellydrum' && ownHp <= 50) willFail = true;
+		if (willFail) {
+			score += config.immunePenalty;
+			return score;
+		}
+	}
+
 	if (isDamaging) {
 		// --- AI_CheckBadMove: immunity (type or ability) ---
 		if (est.effectiveness === 0) {

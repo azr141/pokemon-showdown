@@ -1,0 +1,186 @@
+/**
+ * Per-generation scenario validators.
+ *
+ * Two distinct validation layers exist for scenario teams, and which one a
+ * format gets is decided by `validationPlanFor()`:
+ *
+ *  1. MECHANICAL (this module, always runs): "could this set physically
+ *     exist in Gen N?" — species/moves/items/abilities present in the gen,
+ *     no items in Gen 1, no abilities/natures before Gen 3, Z-Crystals only
+ *     in Gen 7, Mega Stones only in Gens 6-7, Gigantamax/Dynamax Level only
+ *     in Gen 8, Tera Types only in Gen 9, EV/IV/level sanity.
+ *
+ *  2. TIER (TeamValidator, opt-in): competitive legality — bans, clauses,
+ *     learnsets. Only meaningful for ladder formats (gen4ou, gen9ou...).
+ *     Custom-game formats skip it: in-game AI battles have no competitive
+ *     clauses (there is no Sleep Clause in the real games), so
+ *     `genNcustomgame` + mechanical validation is the recommended pairing
+ *     for in-game-AI scenarios.
+ */
+
+import { Dex } from '../../dex';
+import { toID } from '../../dex';
+import type { PokemonSet } from '../../teams';
+
+/** The recommended scenario format for a gen (see module docs for why). */
+export function scenarioFormatForGen(gen: number): string {
+	return `gen${gen}customgame`;
+}
+
+export interface ValidationPlan {
+	gen: number;
+	/** Mechanical per-gen validation — always on. */
+	mechanical: true;
+	/** Whether TeamValidator (tier legality) should also run for this format. */
+	tier: boolean;
+}
+
+/**
+ * Which validators apply to a format. Custom games get mechanical-only;
+ * everything else gets mechanical + tier.
+ */
+export function validationPlanFor(formatid: string): ValidationPlan | null {
+	const format = Dex.formats.get(formatid);
+	if (!format.exists) return null;
+	const gen = format.mod === 'base' ? Dex.gen : Dex.forFormat(format).gen;
+	const isCustom = format.id.includes('customgame') || format.id.includes('metronomebattle');
+	return { gen, mechanical: true, tier: !isCustom };
+}
+
+/** Validate one set against what physically exists in `gen`. */
+export function validateSetForGen(set: PokemonSet, gen: number, label: string): string[] {
+	const problems: string[] = [];
+	const dex = Dex.forGen(gen);
+
+	// --- Species ---
+	const species = dex.species.get(set.species || set.name);
+	if (!species.exists) {
+		problems.push(`${label}: unknown species '${set.species}'.`);
+		return problems; // everything else needs a species
+	}
+	if (species.gen > gen) {
+		problems.push(`${label}: ${species.name} does not exist until Gen ${species.gen} (format is Gen ${gen}).`);
+	}
+
+	// --- Level ---
+	if (set.level !== undefined && (!Number.isInteger(set.level) || set.level < 1 || set.level > 100)) {
+		problems.push(`${label}: level must be an integer in [1, 100].`);
+	}
+
+	// --- Moves ---
+	for (const moveName of set.moves || []) {
+		const move = dex.moves.get(moveName);
+		if (!move.exists) {
+			problems.push(`${label}: unknown move '${moveName}'.`);
+		} else if (move.gen > gen) {
+			problems.push(`${label}: ${move.name} does not exist until Gen ${move.gen}.`);
+		}
+	}
+
+	// --- Item ---
+	if (set.item) {
+		if (gen === 1) {
+			problems.push(`${label}: held items do not exist in Gen 1.`);
+		} else {
+			const item = dex.items.get(set.item);
+			if (!item.exists) {
+				problems.push(`${label}: unknown item '${set.item}'.`);
+			} else {
+				if (item.gen > gen) {
+					problems.push(`${label}: ${item.name} does not exist until Gen ${item.gen}.`);
+				}
+				if (item.zMove && gen !== 7) {
+					problems.push(`${label}: Z-Crystals (${item.name}) only exist in Gen 7.`);
+				}
+				if (item.megaStone && (gen < 6 || gen > 7)) {
+					problems.push(`${label}: Mega Stones (${item.name}) only exist in Gens 6-7.`);
+				}
+			}
+		}
+	}
+
+	// --- Ability ---
+	if (gen < 3) {
+		if (set.ability && toID(set.ability) !== 'noability' && toID(set.ability) !== 'none') {
+			problems.push(`${label}: abilities do not exist before Gen 3 (got '${set.ability}').`);
+		}
+	} else if (set.ability) {
+		const ability = dex.abilities.get(set.ability);
+		if (!ability.exists) {
+			problems.push(`${label}: unknown ability '${set.ability}'.`);
+		} else if (ability.gen > gen) {
+			problems.push(`${label}: ${ability.name} does not exist until Gen ${ability.gen}.`);
+		}
+	}
+
+	// --- Nature ---
+	if (set.nature) {
+		if (gen < 3) {
+			problems.push(`${label}: natures do not exist before Gen 3 (got '${set.nature}').`);
+		} else if (!dex.natures.get(set.nature).exists) {
+			problems.push(`${label}: unknown nature '${set.nature}'.`);
+		}
+	}
+
+	// --- EVs / IVs ---
+	if (set.evs) {
+		let total = 0;
+		for (const [stat, val] of Object.entries(set.evs)) {
+			if (typeof val !== 'number') continue;
+			total += val;
+			const max = gen >= 3 ? 252 : 255; // gen 1-2 "EVs" are stat experience, 0-255
+			if (val < 0 || val > max) {
+				problems.push(`${label}: EV ${stat}=${val} out of range [0, ${max}] for Gen ${gen}.`);
+			}
+		}
+		if (gen >= 3 && total > 510) {
+			problems.push(`${label}: EV total ${total} exceeds 510 (Gen 3+).`);
+		}
+	}
+	if (set.ivs) {
+		for (const [stat, val] of Object.entries(set.ivs)) {
+			if (typeof val === 'number' && (val < 0 || val > 31)) {
+				problems.push(`${label}: IV ${stat}=${val} out of range [0, 31].`);
+			}
+		}
+	}
+
+	// --- Gen-gimmick fields ---
+	if (set.teraType && gen !== 9) {
+		problems.push(`${label}: teraType requires Gen 9 (Terastallization).`);
+	}
+	if (set.gigantamax && gen !== 8) {
+		problems.push(`${label}: gigantamax requires Gen 8 (Dynamax).`);
+	}
+	if (set.dynamaxLevel !== undefined && set.dynamaxLevel !== 10 && gen !== 8) {
+		problems.push(`${label}: dynamaxLevel requires Gen 8 (Dynamax).`);
+	}
+
+	return problems;
+}
+
+/** Validate a whole team mechanically for `gen`. `label` prefixes messages (e.g. 'p1'). */
+export function validateTeamForGen(team: PokemonSet[], gen: number, label: string): string[] {
+	const problems: string[] = [];
+	for (let i = 0; i < team.length; i++) {
+		problems.push(...validateSetForGen(team[i], gen, `${label}.team[${i}] (${team[i].species || '?'})`));
+	}
+	return problems;
+}
+
+/**
+ * Validate an AI id against the format's gen. The per-gen in-game AIs
+ * (gen4ingame etc.) hard-code their generation's behavior; running one
+ * against a different gen's format silently misbehaves. The auto-selecting
+ * 'ingame' id is always safe.
+ */
+export function validateAIForGen(aiId: string, gen: number, label: string): string[] {
+	const m = /^gen(\d)ingame$/.exec(aiId);
+	if (m && parseInt(m[1]) !== gen) {
+		return [
+			`${label}: AI '${aiId}' replicates Gen ${m[1]} behavior but the format is Gen ${gen}. ` +
+			`Use 'ingame' to auto-select the matching generation, or 'gen${gen}ingame'.`,
+		];
+	}
+	return [];
+}

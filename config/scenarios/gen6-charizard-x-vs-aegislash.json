@@ -1,7 +1,7 @@
 {
   "title": "XY -- Charizard X vs Aegislash",
   "description": "Gen 6 OU battle. Mega Charizard X faces Aegislash.",
-  "format": "gen6ou",
+  "format": "gen6customgame",
   "seed": "12,23,34,45",
   "p1": {
     "name": "Calem",

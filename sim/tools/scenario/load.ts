@@ -17,6 +17,7 @@ import {
 	allowedWeathersForGen, allowedTerrainsForGen,
 	allowedPseudoWeathersForGen, allowedSideConditionsForGen,
 } from './apply';
+import { validateTeamForGen, validateAIForGen } from './validators';
 import type { Scenario, ScenarioPlayer, ScenarioFieldEffect } from './types';
 
 export function loadScenario(filePath: string): Scenario {
@@ -93,6 +94,23 @@ export function validateScenario(scenario: Scenario): string[] {
 				if (!Number.isInteger(v.confused) || v.confused < 1 || v.confused > 5) {
 					problems.push(`volatiles[${i}].confused must be an integer in [1, 5].`);
 				}
+			}
+		}
+	}
+
+	// Per-gen mechanical validation: teams must be physically possible in
+	// the format's generation, and per-gen AI ids must match the gen.
+	const fmt = Dex.formats.get(scenario.format);
+	if (fmt.exists) {
+		const gen = fmt.mod === 'base' ? Dex.gen : Dex.forFormat(fmt).gen;
+		for (const sideKey of ['p1', 'p2'] as const) {
+			const player = scenario[sideKey];
+			if (!player) continue;
+			if (Array.isArray(player.team)) {
+				problems.push(...validateTeamForGen(player.team, gen, sideKey));
+			}
+			if (player.ai && player.ai !== HUMAN_AI) {
+				problems.push(...validateAIForGen(player.ai, gen, sideKey));
 			}
 		}
 	}

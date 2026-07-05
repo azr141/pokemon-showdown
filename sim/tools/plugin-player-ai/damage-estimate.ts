@@ -159,7 +159,56 @@ export function estimateFoeSpeed(foe: FoePokemon, ctx: ActiveContext): number {
 	return estimateStat(baseSpe, foe.level || 100);
 }
 
-/** True if we (probably) move before the foe, ignoring move priority. */
+/** Our own major status token from the request condition ("152/300 par" → 'par'). */
+function ownStatus(ctx: ActiveContext): string | undefined {
+	const parts = (ctx.pokemon.condition || '').split(' ');
+	return parts.length > 1 && parts[1] !== 'fnt' ? parts[1] : undefined;
+}
+
+/**
+ * Apply the speed modifiers the battle engine itself applies — the mainline
+ * AI's "who moves first" check runs on real engine speed, so replicating the
+ * common modifiers here IS the faithful behavior (not an enhancement):
+ * Choice Scarf ×1.5 / Iron Ball ×0.5, Tailwind ×2, paralysis (÷4 before
+ * Gen 7, ÷2 from Gen 7).
+ */
+function effectiveSpeed(
+	rawSpe: number, item: string | undefined, status: string | undefined,
+	tailwind: boolean, gen: number
+): number {
+	let spe = rawSpe;
+	if (item === 'choicescarf') spe = Math.floor(spe * 1.5);
+	else if (item === 'ironball') spe = Math.floor(spe * 0.5);
+	if (tailwind) spe *= 2;
+	if (status === 'par') spe = Math.floor(spe * (gen >= 7 ? 0.5 : 0.25));
+	return spe;
+}
+
+/** True if `side` currently has Tailwind up. */
+function hasTailwind(ctx: ActiveContext, side: string | null): boolean {
+	if (!side) return false;
+	return !!ctx.view.sideState.get(side as any)?.conditions.has('tailwind' as ID);
+}
+
+/**
+ * True if we move before the foe, ignoring move priority. Uses effective
+ * speed (items / paralysis / Tailwind) and inverts under Trick Room —
+ * matching the engine turn order the mainline AI consults.
+ */
 export function weOutspeed(ctx: ActiveContext, foe: FoePokemon): boolean {
-	return ctx.pokemon.stats.spe >= estimateFoeSpeed(foe, ctx);
+	const known = ctx.view.foeKnownSets.get(foe.speciesId);
+	const foeItem = (known?.item as string | undefined) ?? (foe.revealedItem as string | undefined);
+
+	const ours = effectiveSpeed(
+		ctx.pokemon.stats.spe, ctx.pokemon.item as string, ownStatus(ctx),
+		hasTailwind(ctx, ctx.view.ourSide), ctx.gen,
+	);
+	const theirs = effectiveSpeed(
+		estimateFoeSpeed(foe, ctx), foeItem, foe.status as string | undefined,
+		hasTailwind(ctx, foe.side), ctx.gen,
+	);
+
+	// Trick Room: slower acts first.
+	if (ctx.view.pseudoWeather.has('trickroom' as ID)) return ours <= theirs;
+	return ours >= theirs;
 }

@@ -1,7 +1,7 @@
 {
   "title": "BW — Volcarona vs Jellicent",
   "description": "Gen 5 OU battle. Volcarona tries to sweep past a bulky Water.",
-  "format": "gen5ou",
+  "format": "gen5customgame",
   "seed": "11,22,33,44",
   "p1": {
     "name": "Hilbert",

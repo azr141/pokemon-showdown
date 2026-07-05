@@ -1,7 +1,7 @@
 {
   "title": "SwSh -- Dragapult vs Clefable",
   "description": "Gen 8 OU battle. Dragapult faces Clefable in a speed vs bulk matchup.",
-  "format": "gen8ou",
+  "format": "gen8customgame",
   "seed": "14,25,36,47",
   "p1": {
     "name": "Victor",

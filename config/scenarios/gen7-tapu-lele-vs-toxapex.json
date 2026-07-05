@@ -1,7 +1,7 @@
 {
   "title": "SM -- Tapu Lele vs Toxapex",
   "description": "Gen 7 OU battle. Tapu Lele faces Toxapex on Psychic Terrain.",
-  "format": "gen7ou",
+  "format": "gen7customgame",
   "seed": "13,24,35,46",
   "p1": {
     "name": "Elio",
