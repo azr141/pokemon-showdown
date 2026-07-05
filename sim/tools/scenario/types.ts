@@ -41,8 +41,8 @@ export interface ScenarioField {
 	pseudoWeather?: ScenarioFieldEffect[];
 	/** Side conditions per side (hazards, screens, tailwind, mist, etc.). */
 	sideConditions?: {
-		p1?: ScenarioFieldEffect[];
-		p2?: ScenarioFieldEffect[];
+		p1?: ScenarioFieldEffect[],
+		p2?: ScenarioFieldEffect[],
 	};
 	/**
 	 * Optional backdrop id (e.g. "forest", "beach", "stadium"). Purely cosmetic;
@@ -160,7 +160,7 @@ export interface Scenario {
 	 * with startingPoint='mid'.
 	 */
 	gimmicks?: {
-		p1?: ScenarioGimmickState;
-		p2?: ScenarioGimmickState;
+		p1?: ScenarioGimmickState,
+		p2?: ScenarioGimmickState,
 	};
 }

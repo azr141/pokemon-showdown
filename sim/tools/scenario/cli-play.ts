@@ -29,8 +29,7 @@
 
 import * as readline from 'readline';
 
-import { BattleStream, getPlayerStreams } from '../../battle-stream';
-import { BattlePlayer } from '../../battle-stream';
+import { BattleStream, BattlePlayer, getPlayerStreams } from '../../battle-stream';
 import { Dex } from '../../dex';
 import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
 import type { ChoiceRequest, MoveRequest, SwitchRequest } from '../../side';
@@ -77,11 +76,11 @@ class CliHumanPlayer extends BattlePlayer {
 			return;
 		}
 		if (request.forceSwitch) {
-			this.promptForceSwitch(request as SwitchRequest);
+			this.promptForceSwitch(request);
 			return;
 		}
 		if (request.active) {
-			this.promptMove(request as MoveRequest);
+			this.promptMove(request);
 			return;
 		}
 	}
@@ -92,7 +91,7 @@ class CliHumanPlayer extends BattlePlayer {
 			return;
 		}
 		this.prompting = true;
-		this.rl.question(question, (line) => {
+		this.rl.question(question, line => {
 			this.prompting = false;
 			handler(line.trim());
 		});
@@ -147,7 +146,7 @@ class CliHumanPlayer extends BattlePlayer {
 			console.log(`\n(trapped — cannot switch)`);
 		}
 
-		this.prompt('> ', (line) => {
+		this.prompt('> ', line => {
 			if (line === 'help' || !line) {
 				console.log(HELP);
 				this.promptMove(req);
@@ -161,7 +160,7 @@ class CliHumanPlayer extends BattlePlayer {
 		console.log(`\n────────── Forced switch ──────────`);
 		console.log(this.describeOwnTeam(req));
 		console.log(`\nPick a replacement:`);
-		this.prompt('> switch ', (line) => {
+		this.prompt('> switch ', line => {
 			const choice = /^\d+$/.test(line) ? `switch ${line}` : line;
 			this.choose(choice);
 		});
@@ -172,7 +171,7 @@ export async function playScenarioCli(scenario: Scenario): Promise<void> {
 	const problems = validateScenario(scenario);
 	if (problems.length) throw new Error(`Invalid scenario:\n  ${problems.join('\n  ')}`);
 
-	const humanSides: Array<'p1' | 'p2'> = [];
+	const humanSides: ('p1' | 'p2')[] = [];
 	for (const side of ['p1', 'p2'] as const) {
 		if (scenario[side].ai === HUMAN_AI || !scenario[side].ai) humanSides.push(side);
 	}
@@ -240,11 +239,14 @@ export async function playScenarioCli(scenario: Scenario): Promise<void> {
 			else if (line.startsWith('|-immune|')) console.log(`  → immune!`);
 			else if (line.startsWith('|-crit|')) console.log(`  → critical hit!`);
 			else if (line.startsWith('|-miss|')) console.log(`  → missed`);
-			else if (line.startsWith('|win|')) { winner = line.slice(5); }
+			else if (line.startsWith('|win|')) {
+				winner = line.slice(5);
 			// Exact match: the engine's tie marker is bare `|tie` (no payload).
 			// startsWith('|tie') would false-match `|tier|...` and end the
 			// battle on the very first chunk.
-			else if (line === '|tie' || line.startsWith('|tie|')) { winner = '(tie)'; }
+			} else if (line === '|tie' || line.startsWith('|tie|')) {
+				winner = '(tie)';
+			}
 		}
 		if (winner !== null) break;
 	}

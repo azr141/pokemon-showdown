@@ -11,8 +11,7 @@
  * recognised are simply ignored.
  */
 
-import { Dex, type ModdedDex } from '../../dex';
-import { toID } from '../../dex';
+import { Dex, toID, type ModdedDex } from '../../dex';
 
 export type SideID = 'p1' | 'p2' | 'p3' | 'p4';
 
@@ -313,7 +312,7 @@ export class BattleView {
 		// |-fieldstart|) don't have a pokemon ident; guard against those.
 		const colon = ident.indexOf(':');
 		const slot = colon >= 0 ? ident.slice(0, colon) : ident;
-		if (slot.length < 2 || (slot[0] !== 'p')) return null;
+		if (slot.length < 2 || (!slot.startsWith('p'))) return null;
 		const side = slot.slice(0, 2) as SideID;
 		return { slot, side };
 	}
@@ -497,7 +496,7 @@ export class BattleView {
 		// sideRef looks like 'p2: BotName' or 'p2'.
 		const colon = sideRef.indexOf(':');
 		const side = (colon >= 0 ? sideRef.slice(0, colon) : sideRef) as SideID;
-		if (side.length !== 2 || side[0] !== 'p') return;
+		if (side.length !== 2 || !side.startsWith('p')) return;
 		let state = this.sideState.get(side);
 		if (!state) {
 			state = { conditions: new Set() };

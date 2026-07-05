@@ -8,7 +8,7 @@
 import type { PolicyChain } from '../types';
 import type { RandomActionOptions } from '../policies';
 import { defaultChain } from './default';
-import { gen9Chain } from './gen9';
+import { gen9Chain, gen9IngameChain } from './gen9';
 import { gen1IngameChain } from './gen1';
 import { gen2IngameChain } from './gen2';
 import { gen3IngameChain } from './gen3';
@@ -17,7 +17,6 @@ import { gen5IngameChain } from './gen5';
 import { gen6IngameChain } from './gen6';
 import { gen7IngameChain } from './gen7';
 import { gen8IngameChain } from './gen8';
-import { gen9IngameChain } from './gen9';
 
 export { defaultChain, gen9Chain };
 export {

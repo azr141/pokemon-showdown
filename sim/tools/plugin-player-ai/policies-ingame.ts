@@ -60,7 +60,7 @@ import { estimateDamage, weOutspeed, type DamageEstimate } from './damage-estima
 // Helpers
 // ----------------------------------------------------------------------
 
-export function parseHpPercent(condition: string): number {
+function parseHpPercent(condition: string): number {
 	if (!condition) return 100;
 	const hpPart = condition.split(' ')[0];
 	const slash = hpPart.indexOf('/');
@@ -100,7 +100,7 @@ const SELF_KO_MOVES = new Set([
 	'selfdestruct', 'explosion', 'memento', 'finalgambit', 'mistyexplosion',
 ]);
 
-function isStatusInflicting(move: { status?: string; volatileStatus?: string }): boolean {
+function isStatusInflicting(move: { status?: string, volatileStatus?: string }): boolean {
 	return !!(move.status || move.volatileStatus);
 }
 

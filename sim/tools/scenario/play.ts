@@ -13,7 +13,6 @@
  */
 
 import { BattleStream, getPlayerStreams } from '../../battle-stream';
-import type { Battle } from '../../battle';
 import { Dex } from '../../dex';
 import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
 import { getAIChain, HUMAN_AI } from './registry';

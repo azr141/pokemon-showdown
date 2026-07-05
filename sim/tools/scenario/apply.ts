@@ -184,7 +184,7 @@ export function applyVolatiles(battle: Battle, volatiles: ScenarioVolatile[] | u
 				if (!VALID_BOOST_IDS.has(stat)) {
 					throw new Error(`Scenario volatile: unknown boost stat '${stat}'.`);
 				}
-				if (!Number.isInteger(value) || value! < -6 || value! > 6) {
+				if (!Number.isInteger(value) || value < -6 || value > 6) {
 					throw new Error(`Scenario volatile: boost ${stat} must be an integer in [-6, 6].`);
 				}
 			}
@@ -193,7 +193,7 @@ export function applyVolatiles(battle: Battle, volatiles: ScenarioVolatile[] | u
 				battle.add('-setboost', pokemon, stat, (pokemon.boosts as any)[stat], '[silent]');
 			}
 			// Emit a single visible marker so a UI replay can show "starts boosted".
-			const summary = Object.entries(vol.boosts).map(([s, v]) => `${s}${v! >= 0 ? '+' : ''}${v}`).join(' ');
+			const summary = Object.entries(vol.boosts).map(([s, v]) => `${s}${v >= 0 ? '+' : ''}${v}`).join(' ');
 			battle.add('-message', `${pokemon.name} starts the battle with: ${summary}`);
 		}
 
@@ -247,7 +247,7 @@ export function applyScenarioState(battle: Battle, scenario: Scenario): void {
 
 export function applyGimmicks(
 	battle: Battle,
-	gimmicks: { p1?: ScenarioGimmickState; p2?: ScenarioGimmickState } | undefined,
+	gimmicks: { p1?: ScenarioGimmickState, p2?: ScenarioGimmickState } | undefined,
 ): void {
 	if (!gimmicks) return;
 	for (const sideKey of ['p1', 'p2'] as const) {
@@ -348,7 +348,7 @@ export function buildOnBattleStart(scenario: Scenario): (battle: Battle) => void
 		} else if (startingPoint === 'early') {
 			while ((battle as any).queue.peek()?.choice === 'runSwitch') {
 				const action = (battle as any).queue.shift()!;
-				(battle as any).actions.runSwitch(action.pokemon!);
+				(battle as any).actions.runSwitch(action.pokemon);
 			}
 		}
 		applyScenarioState(battle, scenario);

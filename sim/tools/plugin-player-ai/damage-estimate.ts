@@ -24,7 +24,7 @@
 
 import { toID } from '../../dex';
 import type { ActiveContext, MoveCandidate } from './types';
-import type { FoePokemon } from './battle-view';
+import type { FoePokemon, SideID } from './battle-view';
 import { typeMultiplier, effectiveTypes } from './policies';
 
 /** Standard stat formula for a non-HP stat. Neutral nature, 31 IV, 0 EV. */
@@ -70,11 +70,6 @@ function getFoeDefStat(foe: FoePokemon, ctx: ActiveContext, physical: boolean): 
 
 const WEATHER_FIRE_UP = new Set(['sunnyday', 'desolateland']);
 const WEATHER_WATER_UP = new Set(['raindance', 'primordialsea']);
-
-/** Estimate the foe's current absolute HP from its max HP and HP%. */
-export function estimateFoeCurrentHp(foe: FoePokemon, ctx: ActiveContext): number {
-	return Math.max(1, Math.round(getFoeMaxHp(foe, ctx) * foe.hpPercent / 100));
-}
 
 export interface DamageEstimate {
 	/** Estimated damage as a percent of the foe's max HP (0..∞, can exceed 100). */
@@ -137,8 +132,13 @@ export function estimateDamage(
 	// Weather (only Sun/Rain change Fire/Water damage).
 	const weather = ctx.view.weather as string | undefined;
 	if (weather) {
-		if (move.type === 'Fire') damage = Math.floor(damage * (WEATHER_FIRE_UP.has(weather) ? 1.5 : WEATHER_WATER_UP.has(weather) ? 0.5 : 1));
-		else if (move.type === 'Water') damage = Math.floor(damage * (WEATHER_WATER_UP.has(weather) ? 1.5 : WEATHER_FIRE_UP.has(weather) ? 0.5 : 1));
+		if (move.type === 'Fire') {
+			const mod = WEATHER_FIRE_UP.has(weather) ? 1.5 : WEATHER_WATER_UP.has(weather) ? 0.5 : 1;
+			damage = Math.floor(damage * mod);
+		} else if (move.type === 'Water') {
+			const mod = WEATHER_WATER_UP.has(weather) ? 1.5 : WEATHER_FIRE_UP.has(weather) ? 0.5 : 1;
+			damage = Math.floor(damage * mod);
+		}
 	}
 
 	// Multi-hit moves: approximate with the number of hits.
@@ -185,9 +185,9 @@ function effectiveSpeed(
 }
 
 /** True if `side` currently has Tailwind up. */
-function hasTailwind(ctx: ActiveContext, side: string | null): boolean {
+function hasTailwind(ctx: ActiveContext, side: SideID | null): boolean {
 	if (!side) return false;
-	return !!ctx.view.sideState.get(side as any)?.conditions.has('tailwind' as ID);
+	return !!ctx.view.sideState.get(side)?.conditions.has('tailwind' as ID);
 }
 
 /**

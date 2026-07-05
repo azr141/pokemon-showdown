@@ -18,8 +18,7 @@
  *     for in-game-AI scenarios.
  */
 
-import { Dex } from '../../dex';
-import { toID } from '../../dex';
+import { Dex, toID } from '../../dex';
 import type { PokemonSet } from '../../teams';
 
 /** The recommended scenario format for a gen (see module docs for why). */

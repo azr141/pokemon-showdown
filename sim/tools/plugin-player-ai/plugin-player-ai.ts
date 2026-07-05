@@ -116,7 +116,7 @@ export class PluginPlayerAI extends BattlePlayer {
 			return;
 		}
 		if (request.active) {
-			this.handleMoveRequest(request as MoveRequest);
+			this.handleMoveRequest(request);
 			return;
 		}
 	}

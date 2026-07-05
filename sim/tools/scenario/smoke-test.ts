@@ -162,7 +162,7 @@ async function main() {
 		// they're not on the field at apply time). Once Heatran switches in, the
 		// status persists into subsequent |switch| / |-damage| lines as `... tox`.
 		allChecks.push(check('volatiles: benched p1 slot 2 toxic applied',
-			/\|-status\|p1: Heatran\|tox/.test(log)));
+			log.includes('|-status|p1: Heatran|tox')));
 	}
 
 	// Bench-boost rejection — should error rather than silently no-op.
@@ -202,19 +202,19 @@ async function main() {
 		gen9.gimmicks = { p2: { megaUsed: true } };
 		const megaProbs = validateScenario(gen9);
 		allChecks.push(check('gimmicks: mega allowed in Gen 9',
-			!megaProbs.some(p => /megaUsed/.test(p))));
+			!megaProbs.some(p => p.includes('megaUsed'))));
 
 		gen9.gimmicks = { p1: { dynamaxTurnsLeft: 5 } };
 		const rangeProbs = validateScenario(gen9);
 		allChecks.push(check('gimmicks: dynamaxTurnsLeft out of range rejected',
-			rangeProbs.some(p => /dynamaxTurnsLeft must be an integer in \[1, 3\]/.test(p))));
+			rangeProbs.some(p => p.includes('dynamaxTurnsLeft must be an integer in [1, 3]'))));
 
 		const fresh: Scenario = JSON.parse(JSON.stringify(scenario));
 		fresh.startingPoint = 'start';
 		fresh.gimmicks = { p1: { megaUsed: true } };
 		const startProbs = validateScenario(fresh);
 		allChecks.push(check('gimmicks: rejected with startingPoint=start',
-			startProbs.some(p => /gimmicks requires startingPoint='mid'/.test(p))));
+			startProbs.some(p => p.includes('gimmicks requires startingPoint=\'mid\''))));
 	}
 
 	// ── Edge case: Stealth Rock damages switch-ins in mid-battle ──
@@ -349,7 +349,7 @@ async function main() {
 		// Find the first |move| line after |turn|1 — it should be from p1 (Torkoal).
 		const turn1Start = log.indexOf('|turn|1');
 		const afterTurn1 = turn1Start >= 0 ? log.slice(turn1Start) : '';
-		const firstMove = afterTurn1.match(/\|move\|(p[12])a:/);
+		const firstMove = /\|move\|(p[12])a:/.exec(afterTurn1);
 		allChecks.push(check('edge-trick-room: slow mon moves first under TR',
 			firstMove?.[1] === 'p1',
 			firstMove ? `first mover: ${firstMove[1]}` : 'no move found'));

@@ -72,3 +72,6 @@ local_settings.py
 pip-log.txt
 # redis dumps
 *.rdb
+
+# Claude Code local session data
+.claude/

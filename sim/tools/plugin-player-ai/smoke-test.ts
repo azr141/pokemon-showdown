@@ -64,7 +64,7 @@ async function main() {
 	const seed = new PRNG();
 	const cases: { label: string, format: string, chain: PolicyChain }[] = [
 		{ label: 'gen9 default (random)', format: 'gen9randombattle', chain: defaultChain() },
-		{ label: 'gen9 tactical',          format: 'gen9randombattle', chain: getChain(9) },
+		{ label: 'gen9 tactical', format: 'gen9randombattle', chain: getChain(9) },
 		{ label: 'gen8 default (random)', format: 'gen8randombattle', chain: defaultChain() },
 		{ label: 'gen7 default (random)', format: 'gen7randombattle', chain: defaultChain() },
 	];

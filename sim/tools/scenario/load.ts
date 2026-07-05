@@ -18,7 +18,7 @@ import {
 	allowedPseudoWeathersForGen, allowedSideConditionsForGen,
 } from './apply';
 import { validateTeamForGen, validateAIForGen } from './validators';
-import type { Scenario, ScenarioPlayer, ScenarioFieldEffect } from './types';
+import type { Scenario, ScenarioPlayer } from './types';
 
 export function loadScenario(filePath: string): Scenario {
 	const raw = fs.readFileSync(filePath, 'utf-8');
@@ -85,7 +85,7 @@ export function validateScenario(scenario: Scenario): string[] {
 			}
 			if (v.boosts) {
 				for (const [stat, value] of Object.entries(v.boosts)) {
-					if (!Number.isInteger(value) || value! < -6 || value! > 6) {
+					if (!Number.isInteger(value) || value < -6 || value > 6) {
 						problems.push(`volatiles[${i}].boosts.${stat} must be an integer in [-6, 6].`);
 					}
 				}
@@ -122,20 +122,20 @@ export function validateScenario(scenario: Scenario): string[] {
 		const f = scenario.field;
 		if (f.weather) {
 			const wid = typeof f.weather === 'string' ? f.weather : f.weather.id;
-			if (!allowedWeathersForGen(gen).includes(wid as ID)) {
+			if (!allowedWeathersForGen(gen).includes(wid)) {
 				problems.push(`Weather '${wid}' is not available in Gen ${gen}.`);
 			}
 		}
 		if (f.terrain) {
 			const tid = typeof f.terrain === 'string' ? f.terrain : f.terrain.id;
-			if (!allowedTerrainsForGen(gen).includes(tid as ID)) {
+			if (!allowedTerrainsForGen(gen).includes(tid)) {
 				problems.push(`Terrain '${tid}' is not available in Gen ${gen}.`);
 			}
 		}
 		if (f.pseudoWeather) {
 			for (const entry of f.pseudoWeather) {
 				const pid = typeof entry === 'string' ? entry : entry.id;
-				if (!allowedPseudoWeathersForGen(gen).includes(pid as ID)) {
+				if (!allowedPseudoWeathersForGen(gen).includes(pid)) {
 					problems.push(`Pseudo-weather '${pid}' is not available in Gen ${gen}.`);
 				}
 			}
@@ -146,7 +146,7 @@ export function validateScenario(scenario: Scenario): string[] {
 				if (!conditions) continue;
 				for (const entry of conditions) {
 					const sid = typeof entry === 'string' ? entry : entry.id;
-					if (!allowedSideConditionsForGen(gen).includes(sid as ID)) {
+					if (!allowedSideConditionsForGen(gen).includes(sid)) {
 						problems.push(`Side condition '${sid}' on ${sideKey} is not available in Gen ${gen}.`);
 					}
 				}

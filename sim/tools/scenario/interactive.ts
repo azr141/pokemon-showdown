@@ -21,7 +21,7 @@
 import { BattleStream, getPlayerStreams, BattlePlayer } from '../../battle-stream';
 import { Dex } from '../../dex';
 import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
-import type { ChoiceRequest, MoveRequest, SwitchRequest } from '../../side';
+import type { ChoiceRequest, MoveRequest } from '../../side';
 import { getAIChain, HUMAN_AI } from './registry';
 import { validateScenario } from './load';
 import { buildOnBattleStart } from './apply';
@@ -42,14 +42,6 @@ function tpl(s: string | undefined, slots: Record<string, string>): string {
 	// look right in our flat log.
 	return s.trimStart().replace(/\[([A-Z]+)\]/g, (_, key) => slots[key] ?? `[${key}]`);
 }
-/** Look up a per-effect template; falls back to the supplied default key. */
-function tplForEffect(effectId: string, key: string, fallbackKey: string, slots: Record<string, string>): string {
-	const group = (DefaultText as any)[effectId];
-	const found = group?.[key];
-	if (found) return tpl(found, slots);
-	return tpl(T[fallbackKey], slots);
-}
-
 /** A weather / terrain / pseudo-weather entry with its remaining duration. */
 export interface FieldEffectState {
 	id: string;
@@ -255,7 +247,7 @@ export class InteractiveSession {
 	/** Dex for the scenario's gen, set in runBattle(). Used for move metadata. */
 	private dex: any = null;
 	/** Last seen HP percent per slot. Used to compute `lost X%` for the damage line. */
-	private lastHp: Map<string, number> = new Map();
+	private lastHp = new Map<string, number>();
 
 	/**
 	 * Tracks `|split|pX` blocks. The omniscient stream emits both halves of
@@ -275,7 +267,7 @@ export class InteractiveSession {
 		const problems = validateScenario(scenario);
 		if (problems.length) throw new Error(`Invalid scenario:\n  ${problems.join('\n  ')}`);
 
-		const humanSides: Array<'p1' | 'p2'> = [];
+		const humanSides: ('p1' | 'p2')[] = [];
 		for (const side of ['p1', 'p2'] as const) {
 			if (scenario[side].ai === HUMAN_AI || !scenario[side].ai) humanSides.push(side);
 		}
@@ -441,12 +433,14 @@ export class InteractiveSession {
 			// to the legacy template `[SOURCE]'s attack missed!`.
 			const sourceIdent = parts[2];
 			const targetIdent = parts[3];
-			if (targetIdent && targetIdent.includes(':')) {
+			if (targetIdent?.includes(':')) {
 				this.pushEvent({ kind: 'effect', side: this.sideOf(this.slotOf(targetIdent)),
 					text: tpl(T.miss, { POKEMON: this.nameForSide(targetIdent) }) });
 			} else {
 				this.pushEvent({ kind: 'effect', side: this.sideOf(this.slotOf(sourceIdent)),
-					text: tpl(T.missNoPokemon ?? T.miss, { SOURCE: this.nameForSide(sourceIdent), POKEMON: this.nameForSide(sourceIdent) }) });
+					text: tpl(T.missNoPokemon ?? T.miss, {
+						SOURCE: this.nameForSide(sourceIdent), POKEMON: this.nameForSide(sourceIdent),
+					}) });
 			}
 			break;
 		}
@@ -480,9 +474,9 @@ export class InteractiveSession {
 			const effectRaw = (parts[3] ?? '').replace(/^(move|ability|item):/, '').trim();
 			const effectId = this.idof(effectRaw);
 			const group = (DefaultText as any)[effectId];
-			const text = group?.activate
-				? tpl(group.activate, { POKEMON, TARGET: POKEMON })
-				: `  ${effectRaw} activated!`;
+			const text = group?.activate ?
+				tpl(group.activate, { POKEMON, TARGET: POKEMON }) :
+				`  ${effectRaw} activated!`;
 			this.pushEvent({ kind: 'effect', side: this.sideOf(this.slotOf(parts[2])), text });
 			break;
 		}
@@ -517,7 +511,7 @@ export class InteractiveSession {
 		this.pushEvent({
 			kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }),
 			moveType: move.exists ? move.type : undefined,
-			moveCategory: move.exists ? (move.category as 'Physical' | 'Special' | 'Status') : undefined,
+			moveCategory: move.exists ? (move.category) : undefined,
 			moveTarget: move.exists ? move.target : undefined,
 		});
 	}
@@ -531,7 +525,7 @@ export class InteractiveSession {
 		this.pushEvent({
 			kind: 'move', side, text: tpl(T.move, { POKEMON, MOVE }),
 			moveType: move.exists ? move.type : undefined,
-			moveCategory: move.exists ? (move.category as 'Physical' | 'Special' | 'Status') : undefined,
+			moveCategory: move.exists ? (move.category) : undefined,
 			moveTarget: move.exists ? move.target : undefined,
 			prepare: true,
 		});
@@ -596,9 +590,9 @@ export class InteractiveSession {
 			}
 		}
 		this.pushEvent({ kind: 'damage', side, hpDelta: -lostPct,
-			text: fromEffect
-				? `${POKEMON} was hurt by ${fromEffect}!${pctSuffix}`
-				: tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }),
+			text: fromEffect ?
+				`${POKEMON} was hurt by ${fromEffect}!${pctSuffix}` :
+				tpl(T.damagePercentage, { POKEMON, PERCENTAGE: `${lostPct}%` }),
 			fromEffect, fromEffectKind });
 	}
 
@@ -632,7 +626,11 @@ export class InteractiveSession {
 		const side = this.sideOf(slot);
 		const POKEMON = this.nameForSide(parts[2]);
 		const foe = this.foeAtSlot(slot);
-		if (foe) { foe.fainted = true; foe.hpPercent = 0; foe.active = false; }
+		if (foe) {
+			foe.fainted = true;
+			foe.hpPercent = 0;
+			foe.active = false;
+		}
 		this.pushEvent({ kind: 'faint', side, text: tpl(T.faint, { POKEMON }) });
 	}
 
@@ -752,7 +750,7 @@ export class InteractiveSession {
 		}
 		this.pushEvent({ kind: 'item', side,
 			text: ended ? `${this.nameForSide(parts[2])}'s ${item} was used up` :
-				`[${this.nameForSide(parts[2])}'s ${item}]` });
+			`[${this.nameForSide(parts[2])}'s ${item}]` });
 	}
 
 	private handleTerastallize(parts: string[]): void {
@@ -893,7 +891,9 @@ export class InteractiveSession {
 		}
 		return out;
 	}
-	private resolveFromEffect(fromRaw: string | null, fromId: string | null): { fromEffect?: string, fromEffectKind?: 'item' | 'ability' | 'move' | 'status' } {
+	private resolveFromEffect(
+		fromRaw: string | null, fromId: string | null
+	): { fromEffect?: string, fromEffectKind?: 'item' | 'ability' | 'move' | 'status' } {
 		if (!fromRaw || !fromId) return {};
 		const group = (DefaultText as any)[fromId];
 		const name: string | undefined = group?.name;
@@ -949,13 +949,18 @@ export class InteractiveSession {
 		return `${Math.round(hp.hpPercent)}%`;
 	}
 	private statusName(s: string): string {
-		return ({ brn: 'burned', par: 'paralyzed', psn: 'poisoned', tox: 'badly poisoned', slp: 'asleep', frz: 'frozen' } as any)[s] || s;
+		return ({
+			brn: 'burned', par: 'paralyzed', psn: 'poisoned', tox: 'badly poisoned', slp: 'asleep', frz: 'frozen',
+		} as any)[s] || s;
 	}
 	private statName(s: string): string {
-		return ({ atk: 'Attack', def: 'Defense', spa: 'Sp. Atk', spd: 'Sp. Def', spe: 'Speed', accuracy: 'accuracy', evasion: 'evasiveness' } as any)[s] || s;
+		return ({
+			atk: 'Attack', def: 'Defense', spa: 'Sp. Atk', spd: 'Sp. Def', spe: 'Speed',
+			accuracy: 'accuracy', evasion: 'evasiveness',
+		} as any)[s] || s;
 	}
 	private weatherText(weather: string, upkeep?: string): string {
-		const isUpkeep = upkeep && upkeep.includes('[upkeep]');
+		const isUpkeep = upkeep?.includes('[upkeep]');
 		if (isUpkeep) return `${this.weatherName(weather)} continues`;
 		return this.weatherStart(weather);
 	}
@@ -1042,11 +1047,12 @@ export class InteractiveSession {
 	}
 
 	private buildCurrentMoves(): MoveMeta[][] | null {
-		if (!this.currentRequest || this.currentRequest.wait || this.currentRequest.forceSwitch || this.currentRequest.teamPreview) {
+		const req = this.currentRequest;
+		if (!req || req.wait || req.forceSwitch || req.teamPreview) {
 			return null;
 		}
-		const moveReq = this.currentRequest as MoveRequest;
-		if (!moveReq.active || !moveReq.active.length) return null;
+		const moveReq = req;
+		if (!moveReq.active?.length) return null;
 		const dex = this.dex ?? Dex;
 		const activeFoes = this.foeTeam.filter(f => f.active && !f.fainted);
 		return moveReq.active.map(activeSlot => {
@@ -1087,7 +1093,7 @@ export class InteractiveSession {
 		if (!dex.getImmunity(moveType, defTypes as any)) return 0;
 		const eff = dex.getEffectiveness(moveType, defTypes as any);
 		// getEffectiveness returns -2..+2 in log2 space.
-		return Math.pow(2, eff);
+		return 2 ** eff;
 	}
 
 	/** Effective types for a foe mon, accounting for terastallization. */
@@ -1212,7 +1218,7 @@ export class InteractiveSession {
 				if (typeof layers === 'number') entry.layers = layers;
 				list.push(entry);
 			}
-			sideEffects[sideKey as 'p1' | 'p2'] = list;
+			sideEffects[sideKey] = list;
 		}
 		return { weather, terrain, pseudoWeather, sideEffects };
 	}
@@ -1232,7 +1238,7 @@ export class InteractiveSession {
 				hpPercent: 100, condition: '',
 				status: null, revealedItem: null, revealedAbility: null,
 				teraType: null, terastallized: null, boosts: {}, fainted: false,
-				active: idx === 0,
+				active: idx === 0, slot: null,
 			};
 			// Overlay open-sheet info — never overwrite what the log revealed.
 			return {

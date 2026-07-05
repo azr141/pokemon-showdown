@@ -10,7 +10,10 @@
  */
 
 import type { PolicyChain } from '../types';
-import { superEffectiveMove, switchToResist, randomAction, randomForceSwitch, defaultTeamPreview, type RandomActionOptions } from '../policies';
+import {
+	superEffectiveMove, switchToResist, randomAction, randomForceSwitch,
+	defaultTeamPreview, type RandomActionOptions,
+} from '../policies';
 import { ingameScoreMove, teraOnLastMon, GEN4_CONFIG } from '../policies-ingame';
 
 export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
