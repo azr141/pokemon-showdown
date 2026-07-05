@@ -311,7 +311,11 @@ export class InteractiveSession {
 		const aiSpec = { name: this.scenario[this.aiSide].name ?? 'AI', team: this.scenario[this.aiSide].team };
 
 		const humanPlayer = new WebHumanPlayer(streams[this.humanSide], this);
-		const aiPlayer = new PluginPlayerAI(streams[this.aiSide], { chain: aiChain, gen });
+		// The AI is omniscient about the human's team (like the mainline games'
+		// AI knows the current foe's real stats and ability).
+		const aiPlayer = new PluginPlayerAI(streams[this.aiSide], {
+			chain: aiChain, gen, opponentSets: this.scenario[this.humanSide].team,
+		});
 
 		void humanPlayer.start();
 		void aiPlayer.start();

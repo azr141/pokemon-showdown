@@ -28,9 +28,10 @@
  * ## Damage
  *
  * `AI_TryToFaint` needs damage numbers. We compute them with `damage-estimate.ts`
- * using our real attack stats (from the request) and the foe's defenses
- * estimated from its base stats (31 IV / 0 EV / neutral nature). See that file
- * for the documented assumptions.
+ * using our real attack stats (from the request) and the foe's REAL defenses
+ * when the opposing team was registered (scenario play — matching the games'
+ * omniscient AI), falling back to base-stat estimates (31 IV / 0 EV / neutral
+ * nature) otherwise. See that file for the documented assumptions.
  *
  * ## Gen 1-2
  *

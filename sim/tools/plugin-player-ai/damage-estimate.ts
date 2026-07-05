@@ -71,6 +71,55 @@ function getFoeDefStat(foe: FoePokemon, ctx: ActiveContext, physical: boolean): 
 const WEATHER_FIRE_UP = new Set(['sunnyday', 'desolateland']);
 const WEATHER_WATER_UP = new Set(['raindance', 'primordialsea']);
 
+/**
+ * Real base power for the common variable-power moves, computed from the
+ * same inputs the games use (speed ratios, weights). The AI's damage rank
+ * is meaningless for e.g. Gyro Ball if we assume a flat 60 — a min-speed
+ * Bronzong's Gyro Ball against a fast sweeper is a 150 BP STAB move.
+ * Returns null for variable-power moves we don't model (those fall back
+ * to a flat 60).
+ */
+function variableBasePower(
+	moveId: string, ctx: ActiveContext, foe: FoePokemon,
+	ourSpecies: { weighthg?: number } | null
+): number | null {
+	const ourSpe = Math.max(1, ctx.pokemon.stats.spe);
+	const foeSpe = Math.max(1, estimateFoeSpeed(foe, ctx));
+	const foeWeight = ctx.dex.species.get(foe.speciesId)?.weighthg ?? 500;
+	const ourWeight = ourSpecies?.weighthg ?? 500;
+
+	switch (moveId) {
+	case 'gyroball':
+		return Math.min(150, Math.floor(25 * foeSpe / ourSpe) + 1);
+	case 'electroball': {
+		const ratio = ourSpe / foeSpe;
+		if (ratio >= 4) return 150;
+		if (ratio >= 3) return 120;
+		if (ratio >= 2) return 80;
+		if (ratio >= 1) return 60;
+		return 40;
+	}
+	case 'lowkick':
+	case 'grassknot':
+		if (foeWeight >= 2000) return 120;
+		if (foeWeight >= 1000) return 100;
+		if (foeWeight >= 500) return 80;
+		if (foeWeight >= 250) return 60;
+		if (foeWeight >= 100) return 40;
+		return 20;
+	case 'heavyslam':
+	case 'heatcrash': {
+		const ratio = ourWeight / Math.max(1, foeWeight);
+		if (ratio >= 5) return 120;
+		if (ratio >= 4) return 100;
+		if (ratio >= 3) return 80;
+		if (ratio >= 2) return 60;
+		return 40;
+	}
+	}
+	return null;
+}
+
 export interface DamageEstimate {
 	/** Estimated damage as a percent of the foe's max HP (0..∞, can exceed 100). */
 	percent: number;
@@ -101,7 +150,8 @@ export function estimateDamage(
 	const maxHp = getFoeMaxHp(foe, ctx);
 	const curHp = Math.max(1, Math.round(maxHp * foe.hpPercent / 100));
 	const ourLevel = parseLevel(ctx.pokemon.details);
-	const ourTypes = ctx.dex.species.get(toID(ctx.pokemon.details.split(',')[0]))?.types ?? [];
+	const ourSpecies = ctx.dex.species.get(toID(ctx.pokemon.details.split(',')[0]));
+	const ourTypes = ourSpecies?.types ?? [];
 
 	// Variable / fixed-damage moves have basePower 0. Use sensible fallbacks.
 	let basePower = move.basePower;
@@ -115,13 +165,20 @@ export function estimateDamage(
 		if (move.ohko) {
 			return { percent: 100, canKO: true, effectiveness: eff };
 		}
-		basePower = 60; // moderate fallback for variable-power moves
+		basePower = variableBasePower(move.id as string, ctx, foe, ourSpecies) ?? 60;
 	}
 
 	// Attacker stat (real) vs defender stat (exact if known, else estimated).
 	const isPhysical = move.category === 'Physical';
 	const atkStat = isPhysical ? ctx.pokemon.stats.atk : ctx.pokemon.stats.spa;
-	const defStat = getFoeDefStat(foe, ctx, isPhysical);
+	let defStat = getFoeDefStat(foe, ctx, isPhysical);
+
+	// Gens 1-4: Explosion / Self-Destruct halve the target's Defense in the
+	// damage calc. This is why DPPt Bronzong famously detonates from full
+	// health — the real boom is nearly twice what the base power suggests.
+	if (ctx.gen <= 4 && (move.id === 'explosion' || move.id === 'selfdestruct')) {
+		defStat = Math.max(1, Math.floor(defStat / 2));
+	}
 
 	// Core damage formula (max roll, no random reduction).
 	let damage = Math.floor(Math.floor(Math.floor(2 * ourLevel / 5 + 2) * basePower * atkStat / defStat) / 50) + 2;

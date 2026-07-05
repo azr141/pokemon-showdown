@@ -203,7 +203,9 @@ export async function playScenarioCli(scenario: Scenario): Promise<void> {
 	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 	const humanPlayer = new CliHumanPlayer(streams[humanSide], rl);
-	const aiPlayer = new PluginPlayerAI(streams[aiSide], { chain: aiChain, gen });
+	const aiPlayer = new PluginPlayerAI(streams[aiSide], {
+		chain: aiChain, gen, opponentSets: scenario[humanSide].team,
+	});
 
 	void humanPlayer.start();
 	void aiPlayer.start();
