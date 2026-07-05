@@ -8,7 +8,7 @@ export * from './types';
 export { loadScenario, saveScenario, validateScenario, validateScenarioTeams } from './load';
 export {
 	validateSetForGen, validateTeamForGen, validateAIForGen,
-	validationPlanFor, scenarioFormatForGen,
+	validationPlanFor, scenarioFormatForGen, scenarioBattleFormatId,
 } from './validators';
 export type { ValidationPlan } from './validators';
 export { getAIChain, registerAI, listAIs, HUMAN_AI } from './registry';

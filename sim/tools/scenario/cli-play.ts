@@ -35,6 +35,7 @@ import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
 import type { ChoiceRequest, MoveRequest, SwitchRequest } from '../../side';
 import { getAIChain, HUMAN_AI } from './registry';
 import { validateScenario, loadScenario } from './load';
+import { scenarioBattleFormatId } from './validators';
 import { buildOnBattleStart } from './apply';
 import type { Scenario } from './types';
 
@@ -188,9 +189,7 @@ export async function playScenarioCli(scenario: Scenario): Promise<void> {
 	const gen = format.exists ? (format.mod === 'base' ? Dex.gen : Dex.forFormat(format).gen) : Dex.gen;
 	const aiChain = getAIChain(scenario[aiSide].ai ?? 'default', gen);
 
-	const formatId = scenario.format.includes('@@@') ?
-		`${scenario.format},!Team Preview` :
-		`${scenario.format}@@@!Team Preview`;
+	const formatId = scenarioBattleFormatId(scenario.format);
 
 	const streams = getPlayerStreams(new BattleStream({
 		noCatch: true,

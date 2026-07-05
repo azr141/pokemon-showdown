@@ -17,6 +17,7 @@ import { Dex } from '../../dex';
 import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
 import { getAIChain, HUMAN_AI } from './registry';
 import { validateScenario } from './load';
+import { scenarioBattleFormatId } from './validators';
 import { buildOnBattleStart } from './apply';
 import type { Scenario } from './types';
 
@@ -60,21 +61,7 @@ export async function playScenario(
 	const format = Dex.formats.get(scenario.format);
 	const gen = format.exists ? format.mod === 'base' ? Dex.gen : Dex.forFormat(format).gen : Dex.gen;
 
-	// Strip Team Preview for scenario play: the team order is already fixed
-	// by the JSON, so team preview would just be a no-op `default` round-trip
-	// that delays our field/volatile application past turn 1. Only strip it
-	// when the format actually has the rule — appending '!Team Preview' to a
-	// format without it (gen 1-4) throws during Battle construction.
-	let formatId = scenario.format;
-	try {
-		if (Dex.formats.getRuleTable(format).has('teampreview')) {
-			formatId = scenario.format.includes('@@@') ?
-				`${scenario.format},!Team Preview` :
-				`${scenario.format}@@@!Team Preview`;
-		}
-	} catch {
-		// Unresolvable rule table (exotic custom rules) — leave format as-is.
-	}
+	const formatId = scenarioBattleFormatId(scenario.format);
 
 	const streams = getPlayerStreams(new BattleStream({
 		noCatch: true,

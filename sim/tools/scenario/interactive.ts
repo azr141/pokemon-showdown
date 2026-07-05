@@ -24,6 +24,7 @@ import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
 import type { ChoiceRequest, MoveRequest } from '../../side';
 import { getAIChain, HUMAN_AI } from './registry';
 import { validateScenario } from './load';
+import { scenarioBattleFormatId } from './validators';
 import { buildOnBattleStart } from './apply';
 import type { Scenario } from './types';
 import { DefaultText } from '../../../data/text/default';
@@ -297,9 +298,7 @@ export class InteractiveSession {
 		this.dex = Dex.forGen(gen);
 		const aiChain = getAIChain(this.scenario[this.aiSide].ai ?? 'default', gen);
 
-		const formatId = this.scenario.format.includes('@@@') ?
-			`${this.scenario.format},!Team Preview` :
-			`${this.scenario.format}@@@!Team Preview`;
+		const formatId = scenarioBattleFormatId(this.scenario.format);
 
 		this.battleStream = new BattleStream({
 			noCatch: true,
