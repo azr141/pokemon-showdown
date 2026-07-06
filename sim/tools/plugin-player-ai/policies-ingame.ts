@@ -17,8 +17,10 @@
  *      already has.
  *   2. AI_TryToFaint — the damage core. Computes the damage of every move and
  *      strongly favors a move that can KO this turn, weighted by whether the
- *      AI moves first (speed / priority).
- *   3. AI_CheckViability — situational tweaks: don't Explode unless it KOs,
+ *      AI moves first (speed / priority). Self-KO moves (Explosion) are
+ *      excluded here, exactly as the games do — the AI won't sacrifice its
+ *      Pokemon just to secure a KO.
+ *   3. AI_CheckViability — situational tweaks: keep Explosion as a last resort,
  *      don't heal at high HP, don't set up at low HP, don't re-set weather.
  *
  * Gen 4 onward also reliably prefers the single highest-damage move (the
@@ -196,8 +198,14 @@ export interface IngameConfig {
 	reapplyStatusPenalty: number;
 	/** Bonus for inflicting a fresh status on an unstatused foe (default +2). */
 	statusBonus: number;
-	/** Penalty for a self-KO move (Explosion) that would NOT KO (default -8). */
-	explosionNoKoPenalty: number;
+	/**
+	 * Standing discouragement for self-KO moves (Explosion / Self-Destruct).
+	 * The real Gen 3+ AI excludes these from the faint bonus entirely — a
+	 * trainer won't sacrifice its Pokemon just because the move would KO — and
+	 * only discourages them in the viability pass. So they never lead; they
+	 * surface as a last resort when every other move scores worse.
+	 */
+	selfKoPenalty: number;
 	/** Penalty for a healing move when own HP is high (default -8). */
 	highHpHealPenalty: number;
 	/** Bonus for a healing move when own HP is low (default +6). */
@@ -216,7 +224,7 @@ export interface IngameConfig {
  * Gen 3 (RSE) — loose. KO detection drives play, but with only a slight
  * preference for the strongest non-KO move, so sub-optimal picks are common.
  * Avoids ability-nullified moves (Levitate/absorbs/Wonder Guard, Gen 3 set).
- * No Explosion caution.
+ * Keeps Explosion as a last resort (RSE gives it a mild viability penalty).
  */
 export const GEN3_CONFIG: IngameConfig = {
 	koFasterBonus: 6,
@@ -226,7 +234,7 @@ export const GEN3_CONFIG: IngameConfig = {
 	immunePenalty: -10,
 	reapplyStatusPenalty: -12,
 	statusBonus: 2,
-	explosionNoKoPenalty: 0,
+	selfKoPenalty: -2,
 	highHpHealPenalty: -8,
 	lowHpHealBonus: 6,
 	setupHighHpBonus: 2,
@@ -251,7 +259,7 @@ export const GEN4_CONFIG: IngameConfig = {
 	immunePenalty: -10,
 	reapplyStatusPenalty: -12,
 	statusBonus: 2,
-	explosionNoKoPenalty: -8,
+	selfKoPenalty: -8,
 	highHpHealPenalty: -8,
 	lowHpHealBonus: 6,
 	setupHighHpBonus: 2,
@@ -316,6 +324,16 @@ function scoreCandidate(
 			return score; // immune move: no further bonuses
 		}
 
+		// --- Self-KO moves (Explosion / Self-Destruct) ---
+		// The real Gen 3+ AI excludes these from AI_TryToFaint: it will NOT
+		// sacrifice its Pokemon just because the move would KO. They get only a
+		// standing viability discouragement, so they never lead and surface as
+		// a last resort when everything else scores worse.
+		if (SELF_KO_MOVES.has(move.id as string)) {
+			score += config.selfKoPenalty;
+			return score;
+		}
+
 		// --- AI_TryToFaint: KO detection, speed-weighted ---
 		if (est.canKO && foe) {
 			if (weOutspeed(ctx, foe)) {
@@ -330,11 +348,6 @@ function scoreCandidate(
 		// --- Damage ranking: the single strongest move ---
 		if (est.percent > 0 && est.percent === bestDamagePercent) {
 			score += config.bestDamageBonus;
-		}
-
-		// --- AI_CheckViability: reckless self-KO ---
-		if (config.explosionNoKoPenalty && SELF_KO_MOVES.has(move.id as string) && !est.canKO) {
-			score += config.explosionNoKoPenalty;
 		}
 		return score;
 	}
@@ -378,7 +391,12 @@ function pickBestMove(ctx: ActiveContext, config: IngameConfig): MoveDecision | 
 	if (!pool.length) return null;
 
 	const scored = estimatePool(pool, ctx, config, foe);
-	const bestDamagePercent = scored.reduce((max, sc) => Math.max(max, sc.est.percent), 0);
+	// The "strongest move" preference ignores self-KO moves — a suicide move
+	// isn't the AI's preferred attacker even when it deals the most damage.
+	const bestDamagePercent = scored.reduce((max, sc) => {
+		if (SELF_KO_MOVES.has(sc.cand.raw.id ?? toID(sc.cand.move))) return max;
+		return Math.max(max, sc.est.percent);
+	}, 0);
 
 	let bestScore = -Infinity;
 	let bestCands: MoveCandidate[] = [];
