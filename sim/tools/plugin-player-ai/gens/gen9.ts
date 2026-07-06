@@ -14,7 +14,7 @@ import {
 	superEffectiveMove, switchToResist, randomAction, randomForceSwitch,
 	defaultTeamPreview, type RandomActionOptions,
 } from '../policies';
-import { ingameScoreMove, teraOnLastMon, GEN4_CONFIG } from '../policies-ingame';
+import { ingameScoreMove, teraOnLastMon, switchOnBadMatchup, GEN4_CONFIG, GEN9_SWITCH } from '../policies-ingame';
 
 export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
 	return {
@@ -29,14 +29,21 @@ export function gen9Chain(opts: RandomActionOptions = {}): PolicyChain {
 }
 
 /**
- * Gen 9 in-game AI — full scoring + Terastallization.
+ * Gen 9 in-game AI — full scoring + Terastallization + proactive switching.
  *
- * Same scoring as gen 4/5. NPCs terastallize their LAST Pokemon (ace).
- * Same trigger pattern as Dynamax — no remaining switches. No switching.
+ * Same scoring as gen 4/5. SV is the first mainline AI that pivots: it reads
+ * the opposing Pokemon's type and switches to a defensive answer when the
+ * active is at a super-effective disadvantage and can't KO first. NPCs
+ * terastallize their LAST Pokemon (ace) — trigger is no remaining switches.
  */
 export function gen9IngameChain(): PolicyChain {
 	return {
-		action: [teraOnLastMon(GEN4_CONFIG), ingameScoreMove(GEN4_CONFIG), randomAction()],
+		action: [
+			switchOnBadMatchup(GEN9_SWITCH),
+			teraOnLastMon(GEN4_CONFIG),
+			ingameScoreMove(GEN4_CONFIG),
+			randomAction(),
+		],
 		forceSwitch: [randomForceSwitch],
 		teamPreview: [defaultTeamPreview],
 	};

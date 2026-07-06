@@ -52,6 +52,7 @@
 import { toID } from '../../dex';
 import type {
 	ActionPolicy, ActiveContext, MoveCandidate, MoveDecision,
+	SwitchCandidate, SwitchDecision,
 } from './types';
 import { typeMultiplier, effectiveTypes } from './policies';
 import type { FoePokemon } from './battle-view';
@@ -477,5 +478,130 @@ export function teraOnLastMon(config: IngameConfig): ActionPolicy {
 		if (!decision) return null;
 		decision.formChange = 'terastallize';
 		return decision;
+	};
+}
+
+// ----------------------------------------------------------------------
+// Switching (Gen 8-9)
+// ----------------------------------------------------------------------
+
+/**
+ * How willing a generation's AI is to switch out of a bad matchup.
+ *
+ * Gens 1-7 never voluntarily switch, so they don't use this policy at all.
+ *
+ * Gen 8 (SwSh) is a Dynamax-and-swing AI: it only bails when the current
+ * mon is both super-effectively threatened AND can't hit back hard (a
+ * genuinely hopeless matchup). Story trainers rarely switch.
+ *
+ * Gen 9 (SV) is the first mainline AI that pivots proactively: it reads the
+ * opposing Pokemon's type and switches to a defensive answer whenever the
+ * active is at a super-effective disadvantage — unless it can already KO
+ * the foe this turn (then it just attacks).
+ */
+export interface SwitchConfig {
+	/** Switch even when we can hit back super-effectively (Gen 9). */
+	onTypeDisadvantage: boolean;
+}
+
+export const GEN8_SWITCH: SwitchConfig = { onTypeDisadvantage: false };
+export const GEN9_SWITCH: SwitchConfig = { onTypeDisadvantage: true };
+
+/** Species types of our active pokemon, from the request details. */
+function ownActiveTypes(ctx: ActiveContext): readonly string[] {
+	return ctx.dex.species.get(toID(ctx.pokemon.details.split(',')[0]))?.types ?? [];
+}
+
+/**
+ * The foe's attacking types: its revealed damaging-move types plus its
+ * species' own types (STAB proxy — the AI reads your Pokemon's type even
+ * before you've attacked, which is how SV switches to counter your lead).
+ */
+function foeAttackingTypes(foe: FoePokemon, ctx: ActiveContext): string[] {
+	const types = new Set<string>(ctx.dex.species.get(foe.speciesId)?.types ?? []);
+	for (const id of foe.revealedMoves) {
+		const m = ctx.dex.moves.get(id);
+		if (m?.exists && m.category !== 'Status') types.add(m.type);
+	}
+	return [...types];
+}
+
+/** Best type multiplier any of `attackTypes` gets against `defenderTypes`. */
+function worstIncoming(attackTypes: string[], defenderTypes: readonly string[], ctx: ActiveContext): number {
+	let max = 0;
+	for (const t of attackTypes) max = Math.max(max, typeMultiplier(ctx.dex, t, defenderTypes));
+	return max;
+}
+
+/** Best type multiplier our current moves get against the foe. */
+function ourBestOffense(ctx: ActiveContext, foe: FoePokemon): number {
+	const foeTypes = effectiveTypes(foe, ctx.dex);
+	if (!foeTypes.length) return 1;
+	let max = 0;
+	for (const cand of ctx.moves) {
+		const m = ctx.dex.moves.get(cand.raw.id ?? toID(cand.move));
+		if (!m?.exists || m.category === 'Status') continue;
+		max = Math.max(max, typeMultiplier(ctx.dex, m.type, foeTypes));
+	}
+	return max;
+}
+
+/** Whether a bench pokemon has a super-effective move against the foe. */
+function benchThreatensFoe(sw: SwitchCandidate, foe: FoePokemon, ctx: ActiveContext): boolean {
+	const foeTypes = effectiveTypes(foe, ctx.dex);
+	if (!foeTypes.length) return false;
+	for (const id of sw.pokemon.moves ?? []) {
+		const m = ctx.dex.moves.get(id);
+		if (!m?.exists || m.category === 'Status') continue;
+		if (typeMultiplier(ctx.dex, m.type, foeTypes) >= 2) return true;
+	}
+	return false;
+}
+
+/** Whether we can KO the foe this turn AND move first — reason to stay in. */
+function weCanKOFirst(ctx: ActiveContext, foe: FoePokemon): boolean {
+	if (!weOutspeed(ctx, foe)) return false;
+	for (const cand of ctx.moves) {
+		if (cand.maxMove || cand.zMove) continue;
+		if (estimateDamage(cand, ctx, foe).canKO) return true;
+	}
+	return false;
+}
+
+/**
+ * Switch out of a super-effective disadvantage to the best defensive answer
+ * on the bench. Abstains (letting the scoring policy attack) when the matchup
+ * is fine, when we can KO the foe first, or when no bench mon is a real
+ * defensive upgrade.
+ */
+export function switchOnBadMatchup(config: SwitchConfig): ActionPolicy {
+	return (ctx: ActiveContext): SwitchDecision | null => {
+		if (!ctx.switches.length) return null;
+		const foe = ctx.view.primaryFoe();
+		if (!foe) return null;
+
+		const attackTypes = foeAttackingTypes(foe, ctx);
+		const incoming = worstIncoming(attackTypes, ownActiveTypes(ctx), ctx);
+		if (incoming < 2) return null; // not a super-effective disadvantage
+
+		// If we can just KO the foe first, do that instead of switching.
+		if (weCanKOFirst(ctx, foe)) return null;
+
+		// Gen 8 (SwSh): only bail when we also can't hit back hard.
+		if (!config.onTypeDisadvantage && ourBestOffense(ctx, foe) >= 2) return null;
+
+		// Pick the bench mon that best neutralizes the incoming threat,
+		// tie-broken by whether it threatens the foe back.
+		let best: { candidate: SwitchCandidate, score: number } | null = null;
+		for (const sw of ctx.switches) {
+			const benchTypes = ctx.dex.species.get(toID(sw.pokemon.details.split(',')[0]))?.types ?? [];
+			const benchIncoming = worstIncoming(attackTypes, benchTypes, ctx);
+			if (benchIncoming >= incoming) continue; // not a defensive upgrade
+			if (benchIncoming >= 2) continue; // don't switch into another SE hit
+			const score = (2 - benchIncoming) * 10 + (benchThreatensFoe(sw, foe, ctx) ? 5 : 0);
+			if (!best || score > best.score) best = { candidate: sw, score };
+		}
+		if (!best) return null;
+		return { kind: 'switch', candidate: best.candidate };
 	};
 }
