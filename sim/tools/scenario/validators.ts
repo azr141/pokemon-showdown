@@ -128,6 +128,19 @@ export function validateSetForGen(set: PokemonSet, gen: number, label: string): 
 		}
 	}
 
+	// --- Battle-only forms need their required item ---
+	// Mega forms (Altaria-Mega → Altarianite), Primal, Arceus plates, Silvally
+	// memories, etc. only exist while holding a specific item. A Mega form
+	// pasted without its stone (or with the wrong item) is a real mistake.
+	const reqItems: string[] | null = species.requiredItems ??
+		(species.requiredItem ? [species.requiredItem] : null);
+	if (reqItems && !reqItems.some(it => toID(it) === toID(set.item))) {
+		errors.push(
+			`${label}: ${species.name} needs the ${reqItems.join(' or ')} item` +
+			`${set.item ? ` (found '${set.item}')` : ' (no item set)'}.`
+		);
+	}
+
 	// --- Ability ---
 	if (gen < 3) {
 		if (set.ability && toID(set.ability) !== 'noability' && toID(set.ability) !== 'none') {
