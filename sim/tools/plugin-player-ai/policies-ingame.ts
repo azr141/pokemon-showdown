@@ -323,9 +323,9 @@ function scoreCandidate(
 		if (move.target === 'foeSide' || move.target === 'allySide') {
 			const side = move.target === 'foeSide' ? foe?.side : ctx.view.ourSide;
 			const state = side ? ctx.view.sideState.get(side) : undefined;
-			if (state?.conditions.has(move.id as ID)) {
+			if (state?.conditions.has(move.id)) {
 				const cap = STACKABLE_HAZARD_CAP[move.id as string];
-				if (!cap || (state.layers.get(move.id as ID) ?? 1) >= cap) willFail = true;
+				if (!cap || (state.layers.get(move.id) ?? 1) >= cap) willFail = true;
 			}
 		}
 		if (willFail) {
