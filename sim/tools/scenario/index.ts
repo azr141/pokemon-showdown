@@ -5,12 +5,14 @@
  */
 
 export * from './types';
-export { loadScenario, saveScenario, validateScenario, validateScenarioTeams } from './load';
+export {
+	loadScenario, saveScenario, validateScenario, validateScenarioTeams, collectScenarioWarnings,
+} from './load';
 export {
 	validateSetForGen, validateTeamForGen, validateAIForGen,
 	validationPlanFor, scenarioFormatForGen, scenarioBattleFormatId,
 } from './validators';
-export type { ValidationPlan } from './validators';
+export type { ValidationPlan, SetValidation } from './validators';
 export { getAIChain, registerAI, listAIs, HUMAN_AI } from './registry';
 export type { ChainBuilder } from './registry';
 export { playScenario, ScenarioBattleStream } from './play';

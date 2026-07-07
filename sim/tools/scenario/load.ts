@@ -107,7 +107,7 @@ export function validateScenario(scenario: Scenario): string[] {
 			const player = scenario[sideKey];
 			if (!player) continue;
 			if (Array.isArray(player.team)) {
-				problems.push(...validateTeamForGen(player.team, gen, sideKey));
+				problems.push(...validateTeamForGen(player.team, gen, sideKey).errors);
 			}
 			if (player.ai && player.ai !== HUMAN_AI) {
 				problems.push(...validateAIForGen(player.ai, gen, sideKey));
@@ -226,4 +226,23 @@ export function validateScenarioTeams(scenario: Scenario): string[] {
 		if (result) for (const err of result) problems.push(`${side}: ${err}`);
 	}
 	return problems;
+}
+
+/**
+ * Non-blocking warnings for a scenario — things that are safe to ignore but
+ * worth surfacing (e.g. a teraType left on a Gen 6 set). Separate from
+ * `validateScenario` so these never block save/play.
+ */
+export function collectScenarioWarnings(scenario: Scenario): string[] {
+	const warnings: string[] = [];
+	const fmt = Dex.formats.get(scenario?.format);
+	if (!fmt.exists) return warnings;
+	const gen = fmt.mod === 'base' ? Dex.gen : Dex.forFormat(fmt).gen;
+	for (const sideKey of ['p1', 'p2'] as const) {
+		const player = scenario[sideKey];
+		if (player && Array.isArray(player.team)) {
+			warnings.push(...validateTeamForGen(player.team, gen, sideKey).warnings);
+		}
+	}
+	return warnings;
 }

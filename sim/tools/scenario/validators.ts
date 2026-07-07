@@ -68,53 +68,61 @@ export function validationPlanFor(formatid: string): ValidationPlan | null {
 	return { gen, mechanical: true, tier: !isCustom };
 }
 
+/** Result of mechanical validation: blocking `errors` + non-blocking `warnings`. */
+export interface SetValidation {
+	errors: string[];
+	warnings: string[];
+}
+
 /** Validate one set against what physically exists in `gen`. */
-export function validateSetForGen(set: PokemonSet, gen: number, label: string): string[] {
-	const problems: string[] = [];
+export function validateSetForGen(set: PokemonSet, gen: number, label: string): SetValidation {
+	const errors: string[] = [];
+	const warnings: string[] = [];
 	const dex = Dex.forGen(gen);
 
 	// --- Species ---
 	const species = dex.species.get(set.species || set.name);
 	if (!species.exists) {
-		problems.push(`${label}: unknown species '${set.species}'.`);
-		return problems; // everything else needs a species
+		errors.push(`${label}: unknown species '${set.species}'.`);
+		return { errors, warnings }; // everything else needs a species
 	}
 	if (species.gen > gen) {
-		problems.push(`${label}: ${species.name} does not exist until Gen ${species.gen} (format is Gen ${gen}).`);
+		errors.push(`${label}: ${species.name} does not exist until Gen ${species.gen} (format is Gen ${gen}).`);
 	}
 
 	// --- Level ---
 	if (set.level !== undefined && (!Number.isInteger(set.level) || set.level < 1 || set.level > 100)) {
-		problems.push(`${label}: level must be an integer in [1, 100].`);
+		errors.push(`${label}: level must be an integer in [1, 100].`);
 	}
 
-	// --- Moves ---
+	// --- Moves (empty slots are fine — a set may carry fewer than 4) ---
 	for (const moveName of set.moves || []) {
+		if (!moveName || (typeof moveName === 'string' && !moveName.trim())) continue;
 		const move = dex.moves.get(moveName);
 		if (!move.exists) {
-			problems.push(`${label}: unknown move '${moveName}'.`);
+			errors.push(`${label}: unknown move '${moveName}'.`);
 		} else if (move.gen > gen) {
-			problems.push(`${label}: ${move.name} does not exist until Gen ${move.gen}.`);
+			errors.push(`${label}: ${move.name} does not exist until Gen ${move.gen}.`);
 		}
 	}
 
 	// --- Item ---
 	if (set.item) {
 		if (gen === 1) {
-			problems.push(`${label}: held items do not exist in Gen 1.`);
+			errors.push(`${label}: held items do not exist in Gen 1.`);
 		} else {
 			const item = dex.items.get(set.item);
 			if (!item.exists) {
-				problems.push(`${label}: unknown item '${set.item}'.`);
+				errors.push(`${label}: unknown item '${set.item}'.`);
 			} else {
 				if (item.gen > gen) {
-					problems.push(`${label}: ${item.name} does not exist until Gen ${item.gen}.`);
+					errors.push(`${label}: ${item.name} does not exist until Gen ${item.gen}.`);
 				}
 				if (item.zMove && gen !== 7) {
-					problems.push(`${label}: Z-Crystals (${item.name}) only exist in Gen 7.`);
+					errors.push(`${label}: Z-Crystals (${item.name}) only exist in Gen 7.`);
 				}
 				if (item.megaStone && (gen < 6 || gen > 7)) {
-					problems.push(`${label}: Mega Stones (${item.name}) only exist in Gens 6-7.`);
+					errors.push(`${label}: Mega Stones (${item.name}) only exist in Gens 6-7.`);
 				}
 			}
 		}
@@ -123,23 +131,23 @@ export function validateSetForGen(set: PokemonSet, gen: number, label: string): 
 	// --- Ability ---
 	if (gen < 3) {
 		if (set.ability && toID(set.ability) !== 'noability' && toID(set.ability) !== 'none') {
-			problems.push(`${label}: abilities do not exist before Gen 3 (got '${set.ability}').`);
+			errors.push(`${label}: abilities do not exist before Gen 3 (got '${set.ability}').`);
 		}
 	} else if (set.ability) {
 		const ability = dex.abilities.get(set.ability);
 		if (!ability.exists) {
-			problems.push(`${label}: unknown ability '${set.ability}'.`);
+			errors.push(`${label}: unknown ability '${set.ability}'.`);
 		} else if (ability.gen > gen) {
-			problems.push(`${label}: ${ability.name} does not exist until Gen ${ability.gen}.`);
+			errors.push(`${label}: ${ability.name} does not exist until Gen ${ability.gen}.`);
 		}
 	}
 
 	// --- Nature ---
 	if (set.nature) {
 		if (gen < 3) {
-			problems.push(`${label}: natures do not exist before Gen 3 (got '${set.nature}').`);
+			errors.push(`${label}: natures do not exist before Gen 3 (got '${set.nature}').`);
 		} else if (!dex.natures.get(set.nature).exists) {
-			problems.push(`${label}: unknown nature '${set.nature}'.`);
+			errors.push(`${label}: unknown nature '${set.nature}'.`);
 		}
 	}
 
@@ -151,42 +159,47 @@ export function validateSetForGen(set: PokemonSet, gen: number, label: string): 
 			total += val;
 			const max = gen >= 3 ? 252 : 255; // gen 1-2 "EVs" are stat experience, 0-255
 			if (val < 0 || val > max) {
-				problems.push(`${label}: EV ${stat}=${val} out of range [0, ${max}] for Gen ${gen}.`);
+				errors.push(`${label}: EV ${stat}=${val} out of range [0, ${max}] for Gen ${gen}.`);
 			}
 		}
 		if (gen >= 3 && total > 510) {
-			problems.push(`${label}: EV total ${total} exceeds 510 (Gen 3+).`);
+			errors.push(`${label}: EV total ${total} exceeds 510 (Gen 3+).`);
 		}
 	}
 	if (set.ivs) {
 		for (const [stat, val] of Object.entries(set.ivs)) {
 			if (typeof val === 'number' && (val < 0 || val > 31)) {
-				problems.push(`${label}: IV ${stat}=${val} out of range [0, 31].`);
+				errors.push(`${label}: IV ${stat}=${val} out of range [0, 31].`);
 			}
 		}
 	}
 
 	// --- Gen-gimmick fields ---
+	// Harmless outside their generation (the engine just won't use them), so
+	// warn and ignore rather than blocking the whole scenario.
 	if (set.teraType && gen !== 9) {
-		problems.push(`${label}: teraType requires Gen 9 (Terastallization).`);
+		warnings.push(`${label}: teraType is only used in Gen 9 — ignored here.`);
 	}
 	if (set.gigantamax && gen !== 8) {
-		problems.push(`${label}: gigantamax requires Gen 8 (Dynamax).`);
+		warnings.push(`${label}: gigantamax is only used in Gen 8 — ignored here.`);
 	}
 	if (set.dynamaxLevel !== undefined && set.dynamaxLevel !== 10 && gen !== 8) {
-		problems.push(`${label}: dynamaxLevel requires Gen 8 (Dynamax).`);
+		warnings.push(`${label}: dynamaxLevel is only used in Gen 8 — ignored here.`);
 	}
 
-	return problems;
+	return { errors, warnings };
 }
 
 /** Validate a whole team mechanically for `gen`. `label` prefixes messages (e.g. 'p1'). */
-export function validateTeamForGen(team: PokemonSet[], gen: number, label: string): string[] {
-	const problems: string[] = [];
+export function validateTeamForGen(team: PokemonSet[], gen: number, label: string): SetValidation {
+	const errors: string[] = [];
+	const warnings: string[] = [];
 	for (let i = 0; i < team.length; i++) {
-		problems.push(...validateSetForGen(team[i], gen, `${label}.team[${i}] (${team[i].species || '?'})`));
+		const r = validateSetForGen(team[i], gen, `${label}.team[${i}] (${team[i].species || '?'})`);
+		errors.push(...r.errors);
+		warnings.push(...r.warnings);
 	}
-	return problems;
+	return { errors, warnings };
 }
 
 /**
