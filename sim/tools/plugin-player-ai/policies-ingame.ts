@@ -104,6 +104,12 @@ const SELF_KO_MOVES = new Set([
 	'selfdestruct', 'explosion', 'memento', 'finalgambit', 'mistyexplosion',
 ]);
 
+/** Stackable entry hazards and their max layers — only redundant once capped. */
+const STACKABLE_HAZARD_CAP: Record<string, number> = {
+	spikes: 3,
+	toxicspikes: 2,
+};
+
 function isStatusInflicting(move: { status?: string, volatileStatus?: string }): boolean {
 	return !!(move.status || move.volatileStatus);
 }
@@ -311,6 +317,17 @@ function scoreCandidate(
 		if ((move.id === 'dreameater' || move.id === 'nightmare') && foe && foe.status !== 'slp') willFail = true;
 		if ((move.id === 'snore' || move.id === 'sleeptalk') && ownStatus !== 'slp') willFail = true;
 		if (move.id === 'bellydrum' && ownHp <= 50) willFail = true;
+		// A side-condition move that's already in effect fails — don't re-set
+		// Stealth Rock / Sticky Web / a screen that's up, or stack a hazard past
+		// its cap. Stackable hazards only fail once at max layers.
+		if (move.target === 'foeSide' || move.target === 'allySide') {
+			const side = move.target === 'foeSide' ? foe?.side : ctx.view.ourSide;
+			const state = side ? ctx.view.sideState.get(side) : undefined;
+			if (state?.conditions.has(move.id as ID)) {
+				const cap = STACKABLE_HAZARD_CAP[move.id as string];
+				if (!cap || (state.layers.get(move.id as ID) ?? 1) >= cap) willFail = true;
+			}
+		}
 		if (willFail) {
 			score += config.immunePenalty;
 			return score;

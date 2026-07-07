@@ -45,6 +45,8 @@ export interface FoePokemon {
 /** Side-wide state we track (hazards, screens). */
 export interface SideState {
 	conditions: Set<ID>;
+	/** Layer count for stackable hazards (spikes, toxicspikes), keyed by id. */
+	layers: Map<ID, number>;
 }
 
 /**
@@ -493,19 +495,25 @@ export class BattleView {
 	}
 
 	private handleSideCondition(sideRef: string, effect: string, start: boolean) {
+		if (!sideRef || !effect) return;
 		// sideRef looks like 'p2: BotName' or 'p2'.
 		const colon = sideRef.indexOf(':');
 		const side = (colon >= 0 ? sideRef.slice(0, colon) : sideRef) as SideID;
 		if (side.length !== 2 || !side.startsWith('p')) return;
 		let state = this.sideState.get(side);
 		if (!state) {
-			state = { conditions: new Set() };
+			state = { conditions: new Set(), layers: new Map() };
 			this.sideState.set(side, state);
 		}
 		const id = toID(effect.replace(/^move: /, ''));
 		if (!id) return;
-		if (start) state.conditions.add(id);
-		else state.conditions.delete(id);
+		if (start) {
+			state.conditions.add(id);
+			state.layers.set(id, (state.layers.get(id) ?? 0) + 1);
+		} else {
+			state.conditions.delete(id);
+			state.layers.delete(id);
+		}
 	}
 
 	private handleFieldStart(effect: string) {
