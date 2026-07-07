@@ -1,0 +1,88 @@
+{
+  "title": "Cats vs Dogs",
+  "description": "Three cats (Incineroar, Meowscarada, Meowstic) settle it with three dogs (Arcanine, Lycanroc, Boltund).",
+  "format": "gen9customgame",
+  "seed": "13,26,39,52",
+  "p1": {
+    "name": "Team Cat",
+    "ai": "human",
+    "team": [
+      {
+        "species": "Incineroar",
+        "item": "Assault Vest",
+        "ability": "Intimidate",
+        "moves": ["Flare Blitz", "Knock Off", "Close Combat", "U-turn"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 0},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Meowscarada",
+        "item": "Choice Band",
+        "ability": "Protean",
+        "moves": ["Flower Trick", "Knock Off", "U-turn", "Triple Axel"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Meowstic",
+        "item": "Life Orb",
+        "ability": "Competitive",
+        "moves": ["Psychic", "Thunderbolt", "Energy Ball", "Calm Mind"],
+        "nature": "Modest",
+        "gender": "F",
+        "evs": {"hp": 0, "atk": 0, "def": 4, "spa": 252, "spd": 0, "spe": 252},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "Team Dog",
+    "ai": "ingame",
+    "team": [
+      {
+        "species": "Arcanine",
+        "item": "Choice Band",
+        "ability": "Intimidate",
+        "moves": ["Flare Blitz", "Extreme Speed", "Wild Charge", "Play Rough"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Lycanroc",
+        "item": "Focus Sash",
+        "ability": "Sand Rush",
+        "moves": ["Accelerock", "Stone Edge", "Close Combat", "Crunch"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Boltund",
+        "item": "Life Orb",
+        "ability": "Strong Jaw",
+        "moves": ["Bolt Beak", "Crunch", "Play Rough", "Fire Fang"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {"p1": [], "p2": []}
+  },
+  "openTeamsheet": true
+}

@@ -1,0 +1,88 @@
+{
+  "title": "Dolphin, Seal & Elephant",
+  "description": "A friend's request: a dolphin (Palafin), a seal (Dewgong), and an elephant (Donphan) take on a pack of predators.",
+  "format": "gen9customgame",
+  "seed": "21,42,63,84",
+  "p1": {
+    "name": "Marina",
+    "ai": "human",
+    "team": [
+      {
+        "species": "Palafin",
+        "item": "Choice Band",
+        "ability": "Zero to Hero",
+        "moves": ["Jet Punch", "Wave Crash", "Flip Turn", "Ice Punch"],
+        "nature": "Adamant",
+        "gender": "F",
+        "evs": {"hp": 4, "atk": 252, "def": 0, "spa": 0, "spd": 0, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Dewgong",
+        "item": "Leftovers",
+        "ability": "Thick Fat",
+        "moves": ["Ice Beam", "Surf", "Aurora Beam", "Rest"],
+        "nature": "Calm",
+        "gender": "F",
+        "evs": {"hp": 252, "atk": 0, "def": 4, "spa": 0, "spd": 252, "spe": 0},
+        "ivs": {"hp": 31, "atk": 0, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Donphan",
+        "item": "Assault Vest",
+        "ability": "Sturdy",
+        "moves": ["Earthquake", "Ice Shard", "Knock Off", "Rapid Spin"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 252, "atk": 252, "def": 4, "spa": 0, "spd": 0, "spe": 0},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "p2": {
+    "name": "Hunter",
+    "ai": "ingame",
+    "team": [
+      {
+        "species": "Sharpedo",
+        "item": "Life Orb",
+        "ability": "Speed Boost",
+        "moves": ["Waterfall", "Crunch", "Ice Fang", "Close Combat"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Arcanine",
+        "item": "Heavy-Duty Boots",
+        "ability": "Intimidate",
+        "moves": ["Flare Blitz", "Extreme Speed", "Wild Charge", "Morning Sun"],
+        "nature": "Adamant",
+        "gender": "M",
+        "evs": {"hp": 92, "atk": 252, "def": 0, "spa": 0, "spd": 0, "spe": 164},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      },
+      {
+        "species": "Krookodile",
+        "item": "Choice Scarf",
+        "ability": "Moxie",
+        "moves": ["Earthquake", "Knock Off", "Stone Edge", "Close Combat"],
+        "nature": "Jolly",
+        "gender": "M",
+        "evs": {"hp": 0, "atk": 252, "def": 0, "spa": 0, "spd": 4, "spe": 252},
+        "ivs": {"hp": 31, "atk": 31, "def": 31, "spa": 31, "spd": 31, "spe": 31},
+        "level": 100
+      }
+    ]
+  },
+  "field": {
+    "sideConditions": {"p1": [], "p2": []}
+  },
+  "openTeamsheet": true
+}
