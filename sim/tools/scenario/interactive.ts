@@ -21,6 +21,7 @@
 import { BattleStream, getPlayerStreams, BattlePlayer } from '../../battle-stream';
 import { Dex } from '../../dex';
 import { PluginPlayerAI } from '../plugin-player-ai/plugin-player-ai';
+import type { MoveExplanation } from '../plugin-player-ai/types';
 import type { ChoiceRequest, MoveRequest } from '../../side';
 import { getAIChain, HUMAN_AI } from './registry';
 import { validateScenario } from './load';
@@ -184,6 +185,8 @@ export interface InteractiveSessionSnapshot {
 	cursor: number;
 	/** Last error from the engine, if any (e.g. an invalid choice that didn't undo cleanly). */
 	lastError: string | null;
+	/** The AI's move reasoning for the most recent turn (move-explainer). Null if none. */
+	aiExplain: MoveExplanation | null;
 }
 
 class WebHumanPlayer extends BattlePlayer {
@@ -245,6 +248,8 @@ export class InteractiveSession {
 	 * layers) — far cleaner than tracking them in parallel from the log.
 	 */
 	private battleStream: BattleStream | null = null;
+	/** The AI player, kept so snapshot() can read its last move explanation. */
+	private aiPlayer: PluginPlayerAI | null = null;
 	/** Dex for the scenario's gen, set in runBattle(). Used for move metadata. */
 	private dex: any = null;
 	/** Last seen HP percent per slot. Used to compute `lost X%` for the damage line. */
@@ -313,12 +318,13 @@ export class InteractiveSession {
 		const humanPlayer = new WebHumanPlayer(streams[this.humanSide], this);
 		// The AI is omniscient about the human's team (like the mainline games'
 		// AI knows the current foe's real stats and ability).
-		const aiPlayer = new PluginPlayerAI(streams[this.aiSide], {
+		this.aiPlayer = new PluginPlayerAI(streams[this.aiSide], {
 			chain: aiChain, gen, opponentSets: this.scenario[this.humanSide].team,
+			explain: true,
 		});
 
 		void humanPlayer.start();
-		void aiPlayer.start();
+		void this.aiPlayer.start();
 
 		const startMsg =
 			`>start ${JSON.stringify(spec)}\n` +
@@ -1173,6 +1179,7 @@ export class InteractiveSession {
 			winner: this.winner,
 			cursor: this.events.length,
 			lastError: this.lastError,
+			aiExplain: this.aiPlayer?.lastExplanation ?? null,
 		};
 	}
 

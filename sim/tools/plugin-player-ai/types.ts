@@ -86,6 +86,16 @@ export interface MoveScoreTrace {
 	reasons: ScoreReason[];
 }
 
+/** The AI's full reasoning for one turn's move decision (for the explainer UI). */
+export interface MoveExplanation {
+	turn: number;
+	/** The AI's active Pokémon species. */
+	pokemon: string;
+	gen: number;
+	/** Candidate moves with scores + breakdowns, sorted high to low. */
+	candidates: MoveScoreTrace[];
+}
+
 /** Context passed to every action policy on an active-pokemon (move) request. */
 export interface ActiveContext {
 	player: PluginPlayerAI;

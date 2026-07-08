@@ -24,7 +24,7 @@ import { BattleView } from './battle-view';
 import type {
 	ActiveContext, ForceSwitchContext, TeamPreviewContext,
 	Decision, MoveDecision, SwitchDecision, MoveCandidate, SwitchCandidate,
-	PolicyChain, FormChange,
+	PolicyChain, FormChange, MoveExplanation,
 } from './types';
 
 export interface PluginPlayerOptions {
@@ -43,6 +43,11 @@ export interface PluginPlayerOptions {
 	 * the AI falls back to estimating from base stats and revealed info.
 	 */
 	opponentSets?: PokemonSet[];
+	/**
+	 * If true, the AI records its move scoring each turn (`lastExplanation`)
+	 * for the move-explainer UI. Off by default (zero overhead).
+	 */
+	explain?: boolean;
 }
 
 export class PluginPlayerAI extends BattlePlayer {
@@ -52,6 +57,9 @@ export class PluginPlayerAI extends BattlePlayer {
 	/** Resolved by the chooseChain hook on first request if `chain` is null. */
 	private resolvedChain: PolicyChain | null;
 	private explicitGen: number | undefined;
+	private readonly explainEnabled: boolean;
+	/** The AI's move reasoning for the most recent turn (when `explain` is on). */
+	lastExplanation: MoveExplanation | null = null;
 
 	constructor(
 		playerStream: ObjectReadWriteStream<string>,
@@ -61,6 +69,7 @@ export class PluginPlayerAI extends BattlePlayer {
 		super(playerStream, debug);
 		this.prng = PRNG.get(options.seed);
 		this.explicitGen = options.gen;
+		this.explainEnabled = !!options.explain;
 		const dex = options.dex ?? (options.gen ? Dex.forGen(options.gen) : Dex);
 		this.view = new BattleView(dex);
 		if (options.gen) this.view.setGen(options.gen);
@@ -174,6 +183,8 @@ export class PluginPlayerAI extends BattlePlayer {
 	private handleMoveRequest(request: MoveRequest) {
 		const pokemon = request.side.pokemon;
 		const chosen: number[] = [];
+		// Reset the explainer each turn; the deciding move policy fills it in.
+		if (this.explainEnabled) this.lastExplanation = null;
 		// Form-change flags are consumed lazily: only one form change per turn
 		// across all active slots, and z-move likewise (z-move is per-slot in
 		// theory but the engine enforces only one in a turn).
@@ -190,6 +201,15 @@ export class PluginPlayerAI extends BattlePlayer {
 			// fall back to passing rather than throwing.
 			if (!ctx.moves.length && !ctx.switches.length) return 'pass';
 			const decision = this.runChain(this.resolvedChain!.action, ctx, `slot ${i}`);
+			// Capture the move scoring for the explainer (first scored slot).
+			if (this.explainEnabled && ctx.explain?.length && !this.lastExplanation) {
+				this.lastExplanation = {
+					turn: this.view.turn,
+					pokemon: ctx.pokemon.details.split(',')[0],
+					gen: this.view.gen,
+					candidates: ctx.explain,
+				};
+			}
 			if (decision.kind === 'switch') {
 				chosen.push(decision.candidate.slot);
 				return `switch ${decision.candidate.slot}`;
@@ -314,6 +334,7 @@ export class PluginPlayerAI extends BattlePlayer {
 			dex: this.view.dex,
 			gen: this.view.gen,
 			prng: this.prng,
+			explain: this.explainEnabled ? [] : undefined,
 		};
 	}
 
