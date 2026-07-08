@@ -15,6 +15,7 @@ import {
 	gen1IngameChain, gen2IngameChain, gen3IngameChain,
 	gen4IngameChain, gen5IngameChain, gen6IngameChain,
 	gen7IngameChain, gen8IngameChain, gen9IngameChain,
+	faithfulWildChain, faithfulGruntChain, faithfulGymChain, faithfulAceChain,
 } from '../plugin-player-ai/gens';
 
 export type ChainBuilder = (gen: number) => PolicyChain;
@@ -33,6 +34,12 @@ const registry: Record<string, ChainBuilder> = {
 	gen7ingame: () => gen7IngameChain(),
 	gen8ingame: () => gen8IngameChain(),
 	gen9ingame: () => gen9IngameChain(),
+	// Faithful exact-port AI (Gen 3 Emerald logic), by trainer skill tier.
+	faithful: () => faithfulGymChain(),
+	faithfulwild: () => faithfulWildChain(),
+	faithfulgrunt: () => faithfulGruntChain(),
+	faithfulgym: () => faithfulGymChain(),
+	faithfulace: () => faithfulAceChain(),
 };
 
 /** The id used when a scenario marks a slot as human-controlled. */

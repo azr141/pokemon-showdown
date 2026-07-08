@@ -13,7 +13,7 @@
 import { Dex, PRNG } from '../../';
 import { BattleView } from './battle-view';
 import type { ActiveContext, MoveCandidate, MoveScoreTrace } from './types';
-import { getIngameChain } from './gens';
+import { getAIChain } from '../scenario/registry';
 
 interface MoveSpec { id: string; name: string; target?: string; priority?: boolean }
 
@@ -27,6 +27,8 @@ interface Case {
 	moves: MoveSpec[];
 	switches?: number;
 	field?: string[]; // extra protocol lines (e.g. '|-sidestart|p1: Rival|move: Stealth Rock')
+	/** AI id to run (registry key). Defaults to the polished 'ingame'. */
+	ai?: string;
 	expect: string; // expected chosen move name
 }
 
@@ -62,7 +64,7 @@ function buildCtx(c: Case): ActiveContext {
 
 function decide(c: Case): { chosen: string, explain: MoveScoreTrace[] } {
 	const ctx = buildCtx(c);
-	const chain = getIngameChain(c.gen);
+	const chain = getAIChain(c.ai ?? 'ingame', c.gen);
 	for (const policy of chain.action) {
 		const d = policy(ctx);
 		if (d) {
@@ -129,6 +131,51 @@ const CASES: Case[] = [
 		],
 		field: ['|-sidestart|p1: Rival|move: Stealth Rock'],
 		expect: 'Recover',
+	},
+
+	// --- Faithful AI (exact Emerald port) ---
+	{
+		name: 'Faithful (ace): priority KO (+6) beats non-priority KO (+4) — Aegislash Shadow Sneak',
+		gen: 6, ai: 'faithfulace',
+		self: { species: 'Aegislash-Blade', condition: '180/347', stats: { atk: 317, def: 114, spa: 317, spd: 114, spe: 154 } },
+		foe: { set: { species: 'Charizard-Mega-X', ability: 'Tough Claws', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Earthquake'], level: 100 }, hpPercent: 7 },
+		moves: [
+			{ id: 'shadowball', name: 'Shadow Ball' },
+			{ id: 'flashcannon', name: 'Flash Cannon' },
+			{ id: 'shadowsneak', name: 'Shadow Sneak' },
+		],
+		expect: 'Shadow Sneak',
+	},
+	{
+		// Authentic Emerald: Explosion is the highest-damage move → it alone
+		// escapes the -1 "not strongest" penalty, and with a backup on the
+		// bench AI_CheckBadMove doesn't penalise it. So it explodes. The
+		// polished AI deliberately avoids this; the faithful AI copies the game.
+		name: 'Faithful (gym): explodes when Explosion is the strongest move + has backup (real Emerald)',
+		gen: 4, ai: 'faithfulgym',
+		self: { species: 'Bronzong', condition: '360/360', item: 'leftovers', stats: { atk: 214, def: 271, spa: 194, spd: 258, spe: 63 } },
+		foe: { set: { species: 'Garchomp', ability: 'Rough Skin', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Earthquake'], level: 100 }, hpPercent: 100 },
+		moves: [
+			{ id: 'stealthrock', name: 'Stealth Rock', target: 'foeSide' },
+			{ id: 'gyroball', name: 'Gyro Ball' },
+			{ id: 'earthquake', name: 'Earthquake' },
+			{ id: 'explosion', name: 'Explosion' },
+		],
+		switches: 1,
+		expect: 'Explosion',
+	},
+	{
+		name: 'Faithful (gym): avoids ability-immune Earthquake into Levitate; uses strongest legal move',
+		gen: 4, ai: 'faithfulgym',
+		self: { species: 'Garchomp', condition: '357/357', stats: { atk: 359, def: 226, spa: 176, spd: 206, spe: 333 } },
+		foe: { set: { species: 'Bronzong', ability: 'Levitate', nature: 'Sassy', evs: { hp: 252, def: 128, spd: 128 }, moves: ['Gyro Ball'], level: 100 }, hpPercent: 100 },
+		moves: [
+			{ id: 'earthquake', name: 'Earthquake' },
+			{ id: 'firefang', name: 'Fire Fang' },
+			{ id: 'outrage', name: 'Outrage' },
+			{ id: 'stoneedge', name: 'Stone Edge' },
+		],
+		expect: 'Fire Fang',
 	},
 ];
 

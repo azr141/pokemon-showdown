@@ -17,6 +17,7 @@ import { gen5IngameChain } from './gen5';
 import { gen6IngameChain } from './gen6';
 import { gen7IngameChain } from './gen7';
 import { gen8IngameChain } from './gen8';
+import { faithfulWildChain, faithfulGruntChain, faithfulGymChain, faithfulAceChain } from './faithful';
 
 export { defaultChain, gen9Chain };
 export {
@@ -24,6 +25,7 @@ export {
 	gen4IngameChain, gen5IngameChain, gen6IngameChain,
 	gen7IngameChain, gen8IngameChain, gen9IngameChain,
 };
+export { faithfulWildChain, faithfulGruntChain, faithfulGymChain, faithfulAceChain };
 
 const registry: { [gen: number]: (opts?: RandomActionOptions) => PolicyChain } = {
 	9: gen9Chain,
