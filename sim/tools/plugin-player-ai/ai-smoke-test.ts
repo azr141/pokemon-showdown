@@ -15,15 +15,15 @@ import { BattleView } from './battle-view';
 import type { ActiveContext, MoveCandidate, MoveScoreTrace } from './types';
 import { getIngameChain } from './gens';
 
-interface MoveSpec { id: string; name: string; target?: string; priority?: boolean; }
+interface MoveSpec { id: string; name: string; target?: string; priority?: boolean }
 
 interface Case {
 	name: string;
 	gen: number;
 	/** Our active: species + real stats + condition (cur/max [status]). */
-	self: { species: string; condition: string; item?: string; stats: { atk: number, def: number, spa: number, spd: number, spe: number } };
+	self: { species: string, condition: string, item?: string, stats: { atk: number, def: number, spa: number, spd: number, spe: number } };
 	/** The foe's set (registered for omniscient damage) + current HP%. */
-	foe: { set: AnyObject; hpPercent: number; status?: string; ability?: string };
+	foe: { set: AnyObject, hpPercent: number, status?: string, ability?: string };
 	moves: MoveSpec[];
 	switches?: number;
 	field?: string[]; // extra protocol lines (e.g. '|-sidestart|p1: Rival|move: Stealth Rock')
