@@ -27,20 +27,26 @@ export function scenarioFormatForGen(gen: number): string {
 }
 
 /**
- * The format id to hand the battle engine for scenario play. Strips Team
- * Preview when the format has it (team order is already fixed by the
- * scenario JSON, so preview is a useless round-trip that delays field /
- * volatile application past turn 1) — but leaves formats without the rule
- * untouched: appending '!Team Preview' to a Gen 1-4 format throws
+ * The format id to hand the battle engine for scenario play. Team order is
+ * already fixed by the scenario JSON, so Team Preview is a useless round-trip
+ * that delays field / volatile application past turn 1 — we strip it.
+ *
+ * Open Team Sheets (bundled by VGC formats) *requires* Team Preview, so we
+ * strip it too; the scenario handles open-sheet display itself via its
+ * `openTeamsheet` field. Both are only removed when actually present —
+ * appending `!Team Preview` to a format without it throws
  * `Rule "!teampreview" did nothing` during Battle construction.
  */
 export function scenarioBattleFormatId(formatid: string): string {
 	try {
-		const format = Dex.formats.get(formatid);
-		if (Dex.formats.getRuleTable(format).has('teampreview')) {
-			return formatid.includes('@@@') ?
-				`${formatid},!Team Preview` :
-				`${formatid}@@@!Team Preview`;
+		const ruleTable = Dex.formats.getRuleTable(Dex.formats.get(formatid));
+		const strips: string[] = [];
+		// Remove Open Team Sheets first (it depends on Team Preview).
+		if (ruleTable.has('openteamsheets')) strips.push('!Open Team Sheets');
+		if (ruleTable.has('teampreview')) strips.push('!Team Preview');
+		if (strips.length) {
+			const joined = strips.join(',');
+			return formatid.includes('@@@') ? `${formatid},${joined}` : `${formatid}@@@${joined}`;
 		}
 	} catch {
 		// Unresolvable rule table (exotic custom rules) — use the format as-is.
