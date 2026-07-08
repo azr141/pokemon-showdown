@@ -190,11 +190,19 @@ export function gen1WeightedRandom(): ActionPolicy {
 // ----------------------------------------------------------------------
 
 export interface IngameConfig {
-	/** Bonus for a KO move when we outspeed (default +6). */
+	/** Bonus for a KO move when we outspeed — a secured KO (default +6). */
 	koFasterBonus: number;
-	/** Bonus for a KO move via positive priority when we'd be slower (default +5). */
+	/**
+	 * Bonus for a KO move via positive priority when we'd be slower. Also a
+	 * SECURED KO (we strike first), so it must beat a non-priority KO that only
+	 * lands if the faster foe doesn't KO us first (default +6).
+	 */
 	priorityKoBonus: number;
-	/** Bonus for a KO move when we're slower and have no priority (default +4). */
+	/**
+	 * Bonus for a KO move when we're slower with no priority — an UNSECURED KO:
+	 * the foe moves first and may KO us before it lands. Kept small so a
+	 * priority KO always wins here (default +2).
+	 */
 	koSlowerBonus: number;
 	/** Bonus for the single highest-damage move. Gen 3 weights this low. */
 	bestDamageBonus: number;
@@ -234,8 +242,8 @@ export interface IngameConfig {
  */
 export const GEN3_CONFIG: IngameConfig = {
 	koFasterBonus: 6,
-	priorityKoBonus: 5,
-	koSlowerBonus: 4,
+	priorityKoBonus: 6,
+	koSlowerBonus: 2,
 	bestDamageBonus: 1,
 	immunePenalty: -10,
 	reapplyStatusPenalty: -12,
@@ -259,8 +267,8 @@ export const GEN3_CONFIG: IngameConfig = {
  */
 export const GEN4_CONFIG: IngameConfig = {
 	koFasterBonus: 6,
-	priorityKoBonus: 5,
-	koSlowerBonus: 4,
+	priorityKoBonus: 6,
+	koSlowerBonus: 2,
 	bestDamageBonus: 3,
 	immunePenalty: -10,
 	reapplyStatusPenalty: -12,
