@@ -211,6 +211,14 @@ const CASES: Case[] = [
 		moves: [{ id: 'thunderwave', name: 'Thunder Wave', target: 'normal' }, { id: 'thunderbolt', name: 'Thunderbolt' }],
 		expect: 'Thunderbolt',
 	},
+	{
+		name: 'Faithful (ace, CheckViability): will not Swords Dance while badly hurt (attacks)',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Garchomp', condition: '90/357', stats: { atk: 359, def: 226, spa: 176, spd: 206, spe: 333 } },
+		foe: { set: { species: 'Snorlax', ability: 'Thick Fat', nature: 'Careful', evs: { hp: 252, spd: 252 }, moves: ['Body Slam'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'swordsdance', name: 'Swords Dance', target: 'self' }, { id: 'earthquake', name: 'Earthquake' }],
+		expect: 'Earthquake',
+	},
 ];
 
 // ----------------------------------------------------------------------

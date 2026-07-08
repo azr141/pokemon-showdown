@@ -213,20 +213,45 @@ function gen3Effect(move: AnyObject): string {
 	if (move.category === 'Status' && move.flags?.heal && !move.status && !WEATHER_HEAL.has(move.id as string)) {
 		return 'heal';
 	}
-	// EFFECT_*_UP — a self-targeting move that only raises stats.
+	// EFFECT_*_UP — a self-targeting move that only raises stats. The real AI
+	// has a distinct script per stat, so single-stat boosts dispatch by stat
+	// (`up-atk`/`up-spa`/`up-spe`/`up-accuracy`/`up-evasion`). Multi-stat setup
+	// (Dragon Dance / Bulk Up / Calm Mind) has its own effect, ported later.
 	const boosts = move.boosts || move.self?.boosts;
 	if (move.category === 'Status' && boosts) {
-		const vals = Object.values(boosts);
-		if (vals.some(v => v > 0) && !vals.some(v => v < 0)) return 'stat-up';
+		const raised = Object.entries(boosts).filter(([, v]) => (v as number) !== 0);
+		if (raised.length === 1 && (raised[0][1] as number) > 0) return `up-${raised[0][0]}`;
 	}
 	return '';
 }
 
 /**
+ * AI_CV_AttackUp / AI_CV_SpAtkUp: the two offensive stat-boost scripts share a
+ * shape — a possible +2 at full HP, discouragement when hurt — differing only
+ * in the mid-HP random threshold (Atk 40, SpAtk 70). Our own stat stage isn't
+ * visible, so we assume it is below +3 (the encourage branch), as the game
+ * would on an un-boosted setup sweeper.
+ */
+function statUpOffensive(
+	ownHp: number, midThresh: number, rng: () => number,
+	add: (k: string, l: string, d: number) => void, stat: 'atk' | 'spa'
+): void {
+	const key = `up-${stat}`;
+	const label = stat === 'atk' ? 'Attack' : 'Sp. Atk';
+	if (ownHp >= 100 && rng() >= 128) add(key, `Boosting ${label} at full HP`, 2);
+	if (ownHp <= 70) {
+		if (ownHp < 40) add(key, `Boosting ${label} while badly hurt`, -2);
+		else if (rng() >= midThresh) add(key, `Boosting ${label} while hurt`, -2);
+	}
+}
+
+/**
  * AI_CheckViability per-effect deltas. Ported from pokeemerald AI_CV_* scripts.
- * Currently: stat-boost (AI_CV_AttackUp) and healing (AI_CV_Heal); more added
- * over time. Note: our own stat stages aren't visible through the protocol, so
- * the "already at +3" discouragement is skipped (we assume the encourage path).
+ * Covered so far: healing (AI_CV_Heal), the offensive/Speed/accuracy/evasion
+ * stat-boosts, and the status families (Sleep/Toxic+Leech Seed/Poison/Paralyze/
+ * Confuse). Note: our own stat stages aren't visible through the protocol, so
+ * the "already at +3" discouragement is skipped (we assume the encourage path);
+ * Defense/Sp.Def up and Substitute are deferred (they read the foe's last move).
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
@@ -280,13 +305,31 @@ function applyCheckViability(
 		}
 		break;
 	}
-	case 'stat-up': {
-		// AI_CV_AttackUp: +2 at full HP (50%); HP-aware discouragement below 70%.
-		if (ownHp >= 100 && rng() < 128) add('setup-high', 'Setting up at full HP', 2);
-		if (ownHp <= 70) {
-			if (ownHp < 40) add('setup-low', 'Setting up at low HP', -2);
-			else if (rng() >= 40) add('setup-low', 'Setting up at middling HP', -2);
+	case 'up-atk': statUpOffensive(ownHp, 40, rng, add, 'atk'); break;
+	case 'up-spa': statUpOffensive(ownHp, 70, rng, add, 'spa'); break;
+	case 'up-spe': {
+		// AI_CV_SpeedUp: only worth it against a faster foe.
+		if (foeFaster) {
+			if (rng() >= 70) add('speed-up', 'Boosting Speed to outrun the foe', 3);
+		} else {
+			add('speed-up', 'Already outspeeding — Speed boost wasted', -3);
 		}
+		break;
+	}
+	case 'up-accuracy': {
+		// AI_CV_AccuracyUp (own accuracy assumed neutral): discouraged when hurt.
+		if (ownHp <= 70) add('accuracy-up', 'Boosting accuracy while hurt (attack instead)', -2);
+		break;
+	}
+	case 'up-evasion': {
+		// AI_CV_EvasionUp (own evasion assumed neutral: no stage penalty).
+		if (ownHp >= 90 && rng() >= 100) add('evasion-high', 'Boosting evasion at high HP', 3);
+		if (foe?.status === 'tox') {
+			// Evasion stalls out a badly-poisoned foe (AI_CV_EvasionUp3/4).
+			const toEncourage = ownHp > 50 || rng() >= 80;
+			if (toEncourage && rng() >= 50) add('evasion-stall', 'Evasion stalls the poisoned foe', 3);
+		}
+		// (Leech Seed / Curse / Ingrain add further +; omitted — not tracked here.)
 		break;
 	}
 	case 'heal': {
