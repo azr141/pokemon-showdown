@@ -54,7 +54,7 @@
 import { toID } from '../../dex';
 import type {
 	ActionPolicy, ActiveContext, MoveCandidate, MoveDecision,
-	SwitchCandidate, SwitchDecision,
+	SwitchCandidate, SwitchDecision, ScoreReason,
 } from './types';
 import { typeMultiplier, effectiveTypes } from './policies';
 import type { FoePokemon } from './battle-view';
@@ -296,20 +296,32 @@ function estimatePool(
 	});
 }
 
-function scoreCandidate(
+interface CandidateExplain { score: number; reasons: ScoreReason[] }
+
+/**
+ * Score one candidate AND record why. This is the single source of truth for
+ * the AI's move scoring — `scoreCandidate` is just `explainCandidate(...).score`,
+ * so the explainer can never drift from the actual decision. Only non-zero
+ * contributions are recorded (base score always first).
+ */
+function explainCandidate(
 	sc: ScoredCandidate, ctx: ActiveContext, config: IngameConfig,
 	foe: FoePokemon | undefined, ownHp: number, bestDamagePercent: number
-): number {
+): CandidateExplain {
 	const { cand, est } = sc;
 	const move = ctx.dex.moves.get(cand.raw.id ?? toID(cand.move));
-	if (!move?.exists) return 100;
+	const reasons: ScoreReason[] = [];
+	let score = 0;
+	const apply = (key: string, label: string, delta: number) => {
+		score += delta;
+		if (delta) reasons.push({ key, label, delta });
+	};
 
-	let score = 100;
+	apply('base', 'Base score', 100);
+	if (!move?.exists) return { score, reasons };
 	const isDamaging = move.category !== 'Status';
 
 	// --- AI_CheckBadMove: moves whose fail condition is currently true ---
-	// The real AI knows when a move simply cannot work and treats it like a
-	// bad move (same -10 as an immune hit in the pokeemerald sources).
 	{
 		const condParts = (ctx.pokemon.condition || '').split(' ');
 		const ownStatus = condParts.length > 1 && condParts[1] !== 'fnt' ? condParts[1] : undefined;
@@ -317,9 +329,6 @@ function scoreCandidate(
 		if ((move.id === 'dreameater' || move.id === 'nightmare') && foe && foe.status !== 'slp') willFail = true;
 		if ((move.id === 'snore' || move.id === 'sleeptalk') && ownStatus !== 'slp') willFail = true;
 		if (move.id === 'bellydrum' && ownHp <= 50) willFail = true;
-		// A side-condition move that's already in effect fails — don't re-set
-		// Stealth Rock / Sticky Web / a screen that's up, or stack a hazard past
-		// its cap. Stackable hazards only fail once at max layers.
 		if (move.target === 'foeSide' || move.target === 'allySide') {
 			const side = move.target === 'foeSide' ? foe?.side : ctx.view.ourSide;
 			const state = side ? ctx.view.sideState.get(side) : undefined;
@@ -329,74 +338,61 @@ function scoreCandidate(
 			}
 		}
 		if (willFail) {
-			score += config.immunePenalty;
-			return score;
+			apply('cant-work', "Move can't work here", config.immunePenalty);
+			return { score, reasons };
 		}
 	}
 
 	if (isDamaging) {
-		// --- AI_CheckBadMove: immunity (type or ability) ---
 		if (est.effectiveness === 0) {
-			score += config.immunePenalty;
-			return score; // immune move: no further bonuses
+			apply('immune', 'Foe is immune to it', config.immunePenalty);
+			return { score, reasons };
 		}
-
-		// --- Self-KO moves (Explosion / Self-Destruct) ---
-		// The real Gen 3+ AI excludes these from AI_TryToFaint: it will NOT
-		// sacrifice its Pokemon just because the move would KO. They get only a
-		// standing viability discouragement, so they never lead and surface as
-		// a last resort when everything else scores worse.
 		if (SELF_KO_MOVES.has(move.id as string)) {
-			score += config.selfKoPenalty;
-			return score;
+			apply('self-ko', 'Self-KO move — last resort only', config.selfKoPenalty);
+			return { score, reasons };
 		}
-
 		// --- AI_TryToFaint: KO detection, speed-weighted ---
 		if (est.canKO && foe) {
-			if (weOutspeed(ctx, foe)) {
-				score += config.koFasterBonus;
-			} else if (move.priority > 0) {
-				score += config.priorityKoBonus;
-			} else {
-				score += config.koSlowerBonus;
-			}
+			if (weOutspeed(ctx, foe)) apply('ko-faster', 'Can KO and moves first', config.koFasterBonus);
+			else if (move.priority > 0) apply('ko-priority', 'Can KO with priority', config.priorityKoBonus);
+			else apply('ko-slower', 'Can KO (moving second)', config.koSlowerBonus);
 		}
-
 		// --- Damage ranking: the single strongest move ---
 		if (est.percent > 0 && est.percent === bestDamagePercent) {
-			score += config.bestDamageBonus;
+			apply('best-damage', 'Strongest damaging move', config.bestDamageBonus);
 		}
-		return score;
+		return { score, reasons };
 	}
 
 	// --- Status moves ---
-	// Status infliction.
 	if (isStatusInflicting(move)) {
-		if (foe?.status) score += config.reapplyStatusPenalty;
-		else score += config.statusBonus;
+		if (foe?.status) apply('reapply-status', 'Foe already has a status', config.reapplyStatusPenalty);
+		else apply('status', 'Inflicts a fresh status', config.statusBonus);
 	}
-
-	// Recovery.
 	if (move.flags?.heal) {
-		if (ownHp > 70) score += config.highHpHealPenalty;
-		else if (ownHp < 40) score += config.lowHpHealBonus;
+		if (ownHp > 70) apply('heal-high', 'Healing at high HP (wasteful)', config.highHpHealPenalty);
+		else if (ownHp < 40) apply('heal-low', 'Healing while low', config.lowHpHealBonus);
 	}
-
-	// Setup / stat boosts.
 	if (isSelfBoostingMove(move)) {
-		if (ownHp < 40) score += config.setupLowHpPenalty;
-		else if (ownHp >= 70) score += config.setupHighHpBonus;
+		if (ownHp < 40) apply('setup-low', 'Setting up while low (risky)', config.setupLowHpPenalty);
+		else if (ownHp >= 70) apply('setup-high', 'Setting up while healthy', config.setupHighHpBonus);
 	}
-
-	// Redundant weather.
 	if (ctx.view.weather) {
 		const weatherFromMove = WEATHER_MOVES[move.id as string];
 		if (weatherFromMove && weatherFromMove === (ctx.view.weather as string)) {
-			score += config.redundantWeatherPenalty;
+			apply('redundant-weather', 'Weather already active', config.redundantWeatherPenalty);
 		}
 	}
 
-	return score;
+	return { score, reasons };
+}
+
+function scoreCandidate(
+	sc: ScoredCandidate, ctx: ActiveContext, config: IngameConfig,
+	foe: FoePokemon | undefined, ownHp: number, bestDamagePercent: number
+): number {
+	return explainCandidate(sc, ctx, config, foe, ownHp, bestDamagePercent).score;
 }
 
 function pickBestMove(ctx: ActiveContext, config: IngameConfig): MoveDecision | null {
@@ -417,17 +413,37 @@ function pickBestMove(ctx: ActiveContext, config: IngameConfig): MoveDecision | 
 
 	let bestScore = -Infinity;
 	let bestCands: MoveCandidate[] = [];
+	const perCand: { cand: MoveCandidate, est: DamageEstimate, score: number, reasons: ScoreReason[] }[] = [];
 	for (const sc of scored) {
-		const s = scoreCandidate(sc, ctx, config, foe, ownHp, bestDamagePercent);
-		if (s > bestScore) {
-			bestScore = s;
+		const { score, reasons } = explainCandidate(sc, ctx, config, foe, ownHp, bestDamagePercent);
+		perCand.push({ cand: sc.cand, est: sc.est, score, reasons });
+		if (score > bestScore) {
+			bestScore = score;
 			bestCands = [sc.cand];
-		} else if (s === bestScore) {
+		} else if (score === bestScore) {
 			bestCands.push(sc.cand);
 		}
 	}
 
 	const candidate = bestCands.length === 1 ? bestCands[0] : ctx.prng.sample(bestCands);
+
+	// Move explainer: hand the UI the full per-candidate breakdown (see MoveScoreTrace).
+	if (ctx.explain) {
+		const tiedTop = bestCands.length > 1;
+		const traces = perCand.map(p => ({
+			move: p.cand.move,
+			slot: p.cand.slot,
+			score: p.score,
+			chosen: p.cand === candidate,
+			tiedTop: tiedTop && p.score === bestScore,
+			damagePercent: p.est.percent || undefined,
+			canKO: p.est.canKO || undefined,
+			reasons: p.reasons,
+		}));
+		traces.sort((a, b) => b.score - a.score);
+		for (const t of traces) ctx.explain.push(t);
+	}
+
 	return { kind: 'move', candidate };
 }
 

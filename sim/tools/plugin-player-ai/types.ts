@@ -61,6 +61,31 @@ export interface SwitchDecision {
 
 export type Decision = MoveDecision | SwitchDecision;
 
+/** One non-zero contribution to a move's score (for the AI move explainer). */
+export interface ScoreReason {
+	/** Stable id, keyed to the frontend glossary (e.g. 'ko-faster'). */
+	key: string;
+	/** Short human-readable label (e.g. 'Can KO and moves first'). */
+	label: string;
+	/** Points this contribution added (or removed). */
+	delta: number;
+}
+
+/** How one candidate move scored, and why — captured verbatim from the AI. */
+export interface MoveScoreTrace {
+	move: string;
+	slot: number;
+	score: number;
+	/** Whether the AI actually chose this move. */
+	chosen: boolean;
+	/** Whether this move tied for the top score (chosen by random tie-break). */
+	tiedTop: boolean;
+	damagePercent?: number;
+	canKO?: boolean;
+	/** Only the contributions that actually applied (non-zero), base first. */
+	reasons: ScoreReason[];
+}
+
 /** Context passed to every action policy on an active-pokemon (move) request. */
 export interface ActiveContext {
 	player: PluginPlayerAI;
@@ -84,6 +109,12 @@ export interface ActiveContext {
 	dex: ModdedDex;
 	gen: number;
 	prng: PRNG;
+	/**
+	 * Optional sink for the move explainer: when set, the scoring policy pushes
+	 * a per-candidate {@link MoveScoreTrace} here so the UI can show why the AI
+	 * moved. Left undefined in normal play (zero overhead).
+	 */
+	explain?: MoveScoreTrace[];
 }
 
 /** Context passed to forced-switch policies (after faint / Volt Switch / etc.). */
