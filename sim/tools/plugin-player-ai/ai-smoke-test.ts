@@ -219,6 +219,24 @@ const CASES: Case[] = [
 		moves: [{ id: 'swordsdance', name: 'Swords Dance', target: 'self' }, { id: 'earthquake', name: 'Earthquake' }],
 		expect: 'Earthquake',
 	},
+	{
+		// We outspeed the (slow) foe and are at full HP → Rest is a wasted turn (-8).
+		name: 'Faithful (ace, CheckViability): will not Rest at full HP (attacks)',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Snorlax', condition: '525/525', stats: { atk: 318, def: 228, spa: 178, spd: 258, spe: 60 } },
+		foe: { set: { species: 'Shuckle', ability: 'Sturdy', nature: 'Bold', evs: { hp: 252, def: 252 }, moves: ['Toxic'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'rest', name: 'Rest', target: 'self' }, { id: 'bodyslam', name: 'Body Slam' }],
+		expect: 'Body Slam',
+	},
+	{
+		// Low HP and outsped by the foe → Rest to recover is the game's play (+3).
+		name: 'Faithful (ace, CheckViability): Rests to recover when low and outsped',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Snorlax', condition: '150/525', stats: { atk: 318, def: 228, spa: 178, spd: 258, spe: 60 } },
+		foe: { set: { species: 'Aerodactyl', ability: 'Rock Head', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Rock Slide'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'rest', name: 'Rest', target: 'self' }, { id: 'bodyslam', name: 'Body Slam' }],
+		expect: 'Rest',
+	},
 ];
 
 // ----------------------------------------------------------------------

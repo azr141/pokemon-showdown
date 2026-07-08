@@ -199,6 +199,13 @@ function scoreFaithful(
 /** Classify a PS move into the Gen 3 EFFECT_* family the AI dispatches on. */
 function gen3Effect(move: AnyObject): string {
 	if (!move?.exists) return '';
+	const id = move.id as string;
+	// EFFECT_REST is its own script — must precede the sleep/heal classifiers,
+	// which Rest would otherwise match (it sleeps the user and has the heal flag).
+	if (id === 'rest') return 'rest';
+	// EFFECT_SPEED_DOWN_HIT: damaging moves whose secondary drops Speed are
+	// scored through AI_CV_SpeedDown (SpeedDownFromChance dispatches these three).
+	if (id === 'icywind' || id === 'rocktomb' || id === 'mudshot') return 'speed-down';
 	if (move.category === 'Status') {
 		// Status-infliction families (all Status-category primary effects).
 		// EFFECT_TOXIC and EFFECT_LEECH_SEED share AI_CV_Toxic in the real game.
@@ -219,8 +226,13 @@ function gen3Effect(move: AnyObject): string {
 	// (Dragon Dance / Bulk Up / Calm Mind) has its own effect, ported later.
 	const boosts = move.boosts || move.self?.boosts;
 	if (move.category === 'Status' && boosts) {
-		const raised = Object.entries(boosts).filter(([, v]) => (v as number) !== 0);
-		if (raised.length === 1 && (raised[0][1] as number) > 0) return `up-${raised[0][0]}`;
+		const changed = Object.entries(boosts).filter(([, v]) => (v as number) !== 0);
+		if (changed.length === 1) {
+			const [stat, val] = changed[0] as [string, number];
+			if (val > 0) return `up-${stat}`;
+			// Foe-targeting single-stat drops (Growl / Leer / Screech / ...).
+			if (val < 0 && move.target !== 'self') return `down-${stat}`;
+		}
 	}
 	return '';
 }
@@ -245,13 +257,78 @@ function statUpOffensive(
 	}
 }
 
+/** The foe's current types (from its species; Gen-3 type chart via `ctx.dex`). */
+function foeTypes(foe: FoePokemon, ctx: ActiveContext): string[] {
+	return ctx.dex.species.get(foe.speciesId).types;
+}
+
+// AI_CV_AttackDown / AI_CV_SpAtkDown consult these type lists to guess whether
+// the foe is a physical / special attacker worth debuffing. The Attack list is
+// bugged in-game (it omits Flying, Poison and Ghost); we replicate that.
+const AI_ATTACK_DOWN_TYPES = new Set(['Normal', 'Fighting', 'Ground', 'Rock', 'Bug', 'Steel']);
+const AI_SPATK_DOWN_TYPES = new Set(['Fire', 'Water', 'Grass', 'Electric', 'Psychic', 'Ice', 'Dragon', 'Dark']);
+
+/**
+ * AI_CV_DefenseDown / SpDefDown / EvasionDown share one shape. With the foe's
+ * stage assumed neutral, the flow always reaches the ~80% -2, then adds a
+ * further -2 against an already-weak foe (just attack it).
+ */
+function statDownDefensive(
+	foeHp: number, rng: () => number,
+	add: (k: string, l: string, d: number) => void, label: string
+): void {
+	if (rng() >= 50) add('stat-down', `Lowering the foe's ${label} is low-value`, -2);
+	if (foeHp <= 70) add('stat-down', `Lowering ${label} on a weak foe (attack instead)`, -2);
+}
+
+/**
+ * AI_CV_AttackDown / AI_CV_SpAtkDown. With the foe's stage assumed neutral the
+ * flow skips straight to *Down3: -2 vs a weak foe, then -2 more unless the foe
+ * is one of the "relevant attacker" types.
+ */
+function statDownOffensive(
+	foe: FoePokemon | undefined, ctx: ActiveContext, foeHp: number, relevant: Set<string>,
+	rng: () => number, add: (k: string, l: string, d: number) => void, label: string
+): void {
+	if (foeHp <= 70) add('stat-down', `Lowering ${label} on a weak foe (attack instead)`, -2);
+	const isRelevant = foe ? foeTypes(foe, ctx).some(t => relevant.has(t)) : false;
+	if (!isRelevant && rng() >= 50) add('stat-down', `Foe is not a ${label} attacker`, -2);
+}
+
+/** AI_CV_Rest. Assumes the foe has no Snatch (which we don't track). */
+function applyRest(
+	ownHp: number, foeFaster: boolean, rng: () => number,
+	add: (k: string, l: string, d: number) => void
+): void {
+	if (!foeFaster && ownHp >= 100) { add('rest-full', 'Resting at full HP', -8); return; }
+	let encourage: boolean;
+	if (!foeFaster) {
+		// AI_CV_Rest2 (HP < 100, we are at least as fast).
+		if (ownHp < 40) encourage = true;
+		else if (ownHp > 50) encourage = false;
+		else encourage = rng() < 70;
+	} else {
+		// AI_CV_Rest4 (the foe is faster).
+		if (ownHp < 60) encourage = true;
+		else if (ownHp > 70) encourage = false;
+		else encourage = rng() < 50;
+	}
+	if (encourage) {
+		if (rng() >= 10) add('rest', 'Resting to recover safely', 3);
+	} else {
+		add('rest', 'Resting is not worth the turn', -3);
+	}
+}
+
 /**
  * AI_CheckViability per-effect deltas. Ported from pokeemerald AI_CV_* scripts.
- * Covered so far: healing (AI_CV_Heal), the offensive/Speed/accuracy/evasion
- * stat-boosts, and the status families (Sleep/Toxic+Leech Seed/Poison/Paralyze/
- * Confuse). Note: our own stat stages aren't visible through the protocol, so
- * the "already at +3" discouragement is skipped (we assume the encourage path);
- * Defense/Sp.Def up and Substitute are deferred (they read the foe's last move).
+ * Covered so far: healing (AI_CV_Heal), Rest, the stat-boosts (Atk/SpA/Spe/
+ * Acc/Evasion) and stat-drops (Atk/SpA/Def/SpD/Spe/Evasion), and the status
+ * families (Sleep/Toxic+Leech Seed/Poison/Paralyze/Confuse). Note: our own and
+ * the foe's stat stages aren't visible through the protocol, so we assume they
+ * are neutral (the un-boosted path the game takes at the start of a turn);
+ * Defense/Sp.Def *up*, Accuracy-down and Substitute are deferred (they read the
+ * foe's last used move).
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
@@ -305,6 +382,22 @@ function applyCheckViability(
 		}
 		break;
 	}
+	case 'rest': applyRest(ownHp, foeFaster, rng, add); break;
+	case 'down-spe':
+	case 'speed-down': {
+		// AI_CV_SpeedDown (also Icy Wind / Rock Tomb / Mud Shot).
+		if (foeFaster) {
+			if (rng() >= 70) add('speed-down', 'Slowing down a faster foe', 2);
+		} else {
+			add('speed-down', 'Foe is already slower — Speed drop wasted', -3);
+		}
+		break;
+	}
+	case 'down-atk': statDownOffensive(foe, ctx, foeHp, AI_ATTACK_DOWN_TYPES, rng, add, 'Attack'); break;
+	case 'down-spa': statDownOffensive(foe, ctx, foeHp, AI_SPATK_DOWN_TYPES, rng, add, 'Sp. Atk'); break;
+	case 'down-def': statDownDefensive(foeHp, rng, add, 'Defense'); break;
+	case 'down-spd': statDownDefensive(foeHp, rng, add, 'Sp. Def'); break;
+	case 'down-evasion': statDownDefensive(foeHp, rng, add, 'evasion'); break;
 	case 'up-atk': statUpOffensive(ownHp, 40, rng, add, 'atk'); break;
 	case 'up-spa': statUpOffensive(ownHp, 70, rng, add, 'spa'); break;
 	case 'up-spe': {
