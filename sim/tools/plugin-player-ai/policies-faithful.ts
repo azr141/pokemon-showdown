@@ -102,6 +102,29 @@ function ownHpPercent(ctx: ActiveContext): number {
 	return den ? Math.max(0, Math.min(100, num / den * 100)) : 100;
 }
 
+/** Does our active have at least one damaging move? (`if_user_has_no_attacking_moves`) */
+function userHasAttackingMove(ctx: ActiveContext): boolean {
+	return ctx.moves.some(m => {
+		const mv = ctx.dex.moves.get(m.raw.id ?? toID(m.move));
+		return mv.exists && mv.category !== 'Status';
+	});
+}
+
+/**
+ * Whether we carry a stall enabler — a Protect/Detect or a Special-Defense-up
+ * move — which the Toxic script uses to encourage poison (`EFFECT_PROTECT` /
+ * `EFFECT_SPECIAL_DEFENSE_UP`).
+ */
+function userHasStallSynergy(ctx: ActiveContext): boolean {
+	return ctx.moves.some(m => {
+		const mv = ctx.dex.moves.get(m.raw.id ?? toID(m.move));
+		if (!mv.exists) return false;
+		if (mv.volatileStatus === 'protect' || mv.id === 'protect' || mv.id === 'detect') return true;
+		const boosts = mv.boosts || mv.self?.boosts;
+		return !!(boosts && (boosts as AnyObject).spd > 0);
+	});
+}
+
 /**
  * Score one move exactly as the enabled Gen 3 scripts would, recording each
  * non-zero adjustment for the explainer.
@@ -176,6 +199,15 @@ function scoreFaithful(
 /** Classify a PS move into the Gen 3 EFFECT_* family the AI dispatches on. */
 function gen3Effect(move: AnyObject): string {
 	if (!move?.exists) return '';
+	if (move.category === 'Status') {
+		// Status-infliction families (all Status-category primary effects).
+		// EFFECT_TOXIC and EFFECT_LEECH_SEED share AI_CV_Toxic in the real game.
+		if (move.status === 'tox' || move.volatileStatus === 'leechseed') return 'toxic';
+		if (move.status === 'psn') return 'poison';
+		if (move.status === 'par') return 'paralyze';
+		if (move.status === 'slp') return 'sleep';
+		if (move.volatileStatus === 'confusion' && !move.boosts && !move.status) return 'confuse';
+	}
 	// EFFECT_RESTORE_HP / SOFTBOILED / SWALLOW — pure recovery (not Rest, not weather-heal).
 	const WEATHER_HEAL = new Set(['morningsun', 'synthesis', 'moonlight']);
 	if (move.category === 'Status' && move.flags?.heal && !move.status && !WEATHER_HEAL.has(move.id as string)) {
@@ -201,7 +233,53 @@ function applyCheckViability(
 	ownHp: number, add: (k: string, l: string, d: number) => void
 ): void {
 	const rng = () => ctx.prng.random(256);
+	const foeHp = foe ? foe.hpPercent : 100;
+	const foeFaster = foe ? !weOutspeed(ctx, foe) : false;
 	switch (gen3Effect(move)) {
+	case 'sleep': {
+		// AI_CV_Sleep: +1 (50%) only if we can exploit sleep (Dream Eater / Nightmare).
+		const hasSleepExploit = ctx.moves.some(m => {
+			const id = m.raw.id ?? toID(m.move);
+			return id === 'dreameater' || id === 'nightmare';
+		});
+		if (hasSleepExploit && rng() >= 128) add('sleep-combo', 'Sleep enables Dream Eater/Nightmare', 1);
+		break;
+	}
+	case 'toxic': {
+		// AI_CV_Toxic (also EFFECT_LEECH_SEED). HP penalties only if we can attack.
+		if (userHasAttackingMove(ctx)) {
+			if (ownHp <= 50 && rng() >= 50) add('status-self-low', 'Statusing while low on HP', -3);
+			if (foeHp <= 50 && rng() >= 50) add('status-foe-low', 'Statusing an already-weak foe', -3);
+		}
+		// Stall synergy (Protect / Sp.Def boost) → encourage the residual damage.
+		if (userHasStallSynergy(ctx) && rng() >= 60) add('status-stall', 'Poison pairs with stall', 2);
+		break;
+	}
+	case 'poison': {
+		// AI_CV_Poison: -1 when we're low or the foe is already weakened.
+		if (ownHp < 50 || foeHp <= 50) add('poison-weak', 'Poison is weak here', -1);
+		break;
+	}
+	case 'paralyze': {
+		// AI_CV_Paralyze.
+		if (foeFaster) {
+			if (rng() >= 20) add('para-slow-foe', 'Paralysis cripples a faster foe', 3);
+		} else if (ownHp <= 70) {
+			add('para-fast', 'Already outspeeding — attack instead', -1);
+		}
+		break;
+	}
+	case 'confuse': {
+		// AI_CV_Confuse: increasingly discouraged as the foe weakens (just KO it).
+		if (foeHp <= 70) {
+			if (rng() >= 128) add('confuse-weak', 'Confusing a weakened foe', -1);
+			if (foeHp <= 50) {
+				add('confuse-weaker', 'Confusing a low-HP foe', -1);
+				if (foeHp <= 30) add('confuse-weakest', 'Confusing a nearly-fainted foe', -1);
+			}
+		}
+		break;
+	}
 	case 'stat-up': {
 		// AI_CV_AttackUp: +2 at full HP (50%); HP-aware discouragement below 70%.
 		if (ownHp >= 100 && rng() < 128) add('setup-high', 'Setting up at full HP', 2);
@@ -214,7 +292,6 @@ function applyCheckViability(
 	case 'heal': {
 		// AI_CV_Heal.
 		if (ownHp >= 100) { add('heal-full', 'Healing at full HP', -3); break; }
-		const foeFaster = foe ? !weOutspeed(ctx, foe) : false;
 		if (!foeFaster) { add('heal-fast', 'Healing while outspeeding (attack instead)', -8); break; }
 		// AI_CV_Heal4: the foe is faster.
 		if (ownHp < 70 || rng() < 30) {

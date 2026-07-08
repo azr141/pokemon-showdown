@@ -195,6 +195,22 @@ const CASES: Case[] = [
 		switches: 1,
 		expect: 'Recover',
 	},
+	{
+		name: 'Faithful (ace, CheckViability): paralyzes a faster foe (Thunder Wave over attack)',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Slowbro', condition: '300/300', stats: { atk: 100, def: 300, spa: 240, spd: 200, spe: 50 } },
+		foe: { set: { species: 'Aerodactyl', ability: 'Rock Head', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Rock Slide'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'thunderwave', name: 'Thunder Wave', target: 'normal' }, { id: 'psychic', name: 'Psychic' }],
+		expect: 'Thunder Wave',
+	},
+	{
+		name: 'Faithful (ace, CheckViability): skips paralysis when already faster and hurt (attacks)',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Jolteon', condition: '180/300', stats: { atk: 150, def: 180, spa: 300, spd: 200, spe: 350 } },
+		foe: { set: { species: 'Snorlax', ability: 'Immunity', nature: 'Careful', evs: { hp: 252, spd: 252 }, moves: ['Body Slam'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'thunderwave', name: 'Thunder Wave', target: 'normal' }, { id: 'thunderbolt', name: 'Thunderbolt' }],
+		expect: 'Thunderbolt',
+	},
 ];
 
 // ----------------------------------------------------------------------
