@@ -177,6 +177,24 @@ const CASES: Case[] = [
 		],
 		expect: 'Fire Fang',
 	},
+	{
+		name: 'Faithful (ace, CheckViability): discourages Recover at full HP (attacks instead)',
+		gen: 6, ai: 'faithfulace',
+		self: { species: 'Jellicent', condition: '380/380', stats: { atk: 150, def: 200, spa: 220, spd: 220, spe: 120 } },
+		foe: { set: { species: 'Garchomp', ability: 'Rough Skin', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Earthquake'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'scald', name: 'Scald' }, { id: 'recover', name: 'Recover', target: 'self' }],
+		switches: 1,
+		expect: 'Scald',
+	},
+	{
+		name: 'Faithful (ace, CheckViability): heals when low HP and outsped',
+		gen: 6, ai: 'faithfulace',
+		self: { species: 'Jellicent', condition: '90/380', stats: { atk: 150, def: 200, spa: 220, spd: 220, spe: 120 } },
+		foe: { set: { species: 'Garchomp', ability: 'Rough Skin', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Earthquake'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'scald', name: 'Scald' }, { id: 'recover', name: 'Recover', target: 'self' }],
+		switches: 1,
+		expect: 'Recover',
+	},
 ];
 
 // ----------------------------------------------------------------------

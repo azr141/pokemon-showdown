@@ -44,7 +44,7 @@ import { toID } from '../../dex';
 import type {
 	ActionPolicy, ActiveContext, MoveCandidate, MoveDecision, MoveScoreTrace, ScoreReason,
 } from './types';
-import { estimateDamage, type DamageEstimate } from './damage-estimate';
+import { estimateDamage, weOutspeed, type DamageEstimate } from './damage-estimate';
 import type { FoePokemon } from './battle-view';
 
 /** Which AI scripts a trainer runs. Mirrors the games' AI_FLAG_* bits. */
@@ -120,6 +120,7 @@ function scoreFaithful(
 	};
 	const isDamaging = move.category !== 'Status';
 	const isSelfKO = SELF_KO_MOVES.has(move.id as string);
+	const ownHp = ownHpPercent(ctx);
 
 	// --- AI_CheckBadMove ---
 	if (flags.checkBadMove) {
@@ -134,7 +135,7 @@ function scoreFaithful(
 		if ((move.id === 'dreameater' || move.id === 'nightmare') && foe && foe.status !== 'slp') {
 			add('cant-work', 'Foe is not asleep', -8);
 		}
-		if (move.id === 'bellydrum' && ownHpPercent(ctx) <= 50) {
+		if (move.id === 'bellydrum' && ownHp <= 50) {
 			add('cant-work', 'Not enough HP for Belly Drum', -10);
 		}
 		if (isSelfKO) {
@@ -166,10 +167,64 @@ function scoreFaithful(
 		}
 	}
 
-	// --- AI_CheckViability: incremental; core cases only for now ---
-	// (Left minimal — the long tail of per-effect deltas is ported over time.)
+	// --- AI_CheckViability (ported incrementally, effect by effect) ---
+	if (flags.checkViability) applyCheckViability(move, ctx, foe, ownHp, add);
 
 	return { score, reasons };
+}
+
+/** Classify a PS move into the Gen 3 EFFECT_* family the AI dispatches on. */
+function gen3Effect(move: AnyObject): string {
+	if (!move?.exists) return '';
+	// EFFECT_RESTORE_HP / SOFTBOILED / SWALLOW — pure recovery (not Rest, not weather-heal).
+	const WEATHER_HEAL = new Set(['morningsun', 'synthesis', 'moonlight']);
+	if (move.category === 'Status' && move.flags?.heal && !move.status && !WEATHER_HEAL.has(move.id as string)) {
+		return 'heal';
+	}
+	// EFFECT_*_UP — a self-targeting move that only raises stats.
+	const boosts = move.boosts || move.self?.boosts;
+	if (move.category === 'Status' && boosts) {
+		const vals = Object.values(boosts);
+		if (vals.some(v => v > 0) && !vals.some(v => v < 0)) return 'stat-up';
+	}
+	return '';
+}
+
+/**
+ * AI_CheckViability per-effect deltas. Ported from pokeemerald AI_CV_* scripts.
+ * Currently: stat-boost (AI_CV_AttackUp) and healing (AI_CV_Heal); more added
+ * over time. Note: our own stat stages aren't visible through the protocol, so
+ * the "already at +3" discouragement is skipped (we assume the encourage path).
+ */
+function applyCheckViability(
+	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
+	ownHp: number, add: (k: string, l: string, d: number) => void
+): void {
+	const rng = () => ctx.prng.random(256);
+	switch (gen3Effect(move)) {
+	case 'stat-up': {
+		// AI_CV_AttackUp: +2 at full HP (50%); HP-aware discouragement below 70%.
+		if (ownHp >= 100 && rng() < 128) add('setup-high', 'Setting up at full HP', 2);
+		if (ownHp <= 70) {
+			if (ownHp < 40) add('setup-low', 'Setting up at low HP', -2);
+			else if (rng() >= 40) add('setup-low', 'Setting up at middling HP', -2);
+		}
+		break;
+	}
+	case 'heal': {
+		// AI_CV_Heal.
+		if (ownHp >= 100) { add('heal-full', 'Healing at full HP', -3); break; }
+		const foeFaster = foe ? !weOutspeed(ctx, foe) : false;
+		if (!foeFaster) { add('heal-fast', 'Healing while outspeeding (attack instead)', -8); break; }
+		// AI_CV_Heal4: the foe is faster.
+		if (ownHp < 70 || rng() < 30) {
+			if (rng() >= 20) add('heal-low', 'Healing while slow and hurt', 2);
+		} else {
+			add('heal', 'Healing (not urgent)', -3);
+		}
+		break;
+	}
+	}
 }
 
 /**
