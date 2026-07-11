@@ -258,6 +258,16 @@ const CASES: Case[] = [
 		field: ['|move|p1a: Gardevoir|Psychic'],
 		expect: 'Rock Slide',
 	},
+	{
+		// With nothing boosted, both are "reset" moves, but Roar is penalised
+		// harder (-3) than Haze (at most -1), so the AI prefers Haze.
+		name: 'Faithful (ace, CheckViability): prefers Haze over Roar when nothing is boosted',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Weezing', condition: '300/300', stats: { atk: 200, def: 280, spa: 220, spd: 200, spe: 160 } },
+		foe: { set: { species: 'Tyranitar', ability: 'Sand Stream', nature: 'Adamant', evs: { atk: 252, hp: 252 }, moves: ['Crunch'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'haze', name: 'Haze', target: 'self' }, { id: 'roar', name: 'Roar', target: 'normal' }],
+		expect: 'Haze',
+	},
 ];
 
 // ----------------------------------------------------------------------

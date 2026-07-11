@@ -197,18 +197,25 @@ function scoreFaithful(
 }
 
 /** Classify a PS move into the Gen 3 EFFECT_* family the AI dispatches on. */
+/**
+ * Moves whose AI_CV effect can't be inferred from PS fields alone, keyed by id.
+ * Covers moves that would otherwise mis-classify (Rest looks like heal; Belly
+ * Drum like an Attack-up) and damaging moves scored by a CheckViability script
+ * (Super Fang, Bide, Icy Wind's speed drop).
+ */
+const ID_EFFECTS: Record<string, string> = {
+	rest: 'rest',
+	icywind: 'speed-down', rocktomb: 'speed-down', mudshot: 'speed-down',
+	lightscreen: 'lightscreen', reflect: 'reflect',
+	superfang: 'superfang', bide: 'bide', bellydrum: 'bellydrum', endure: 'endure',
+	curse: 'curse', roar: 'roar', whirlwind: 'roar', haze: 'haze',
+	foresight: 'foresight', odorsleuth: 'foresight', psychup: 'psychup',
+};
+
 function gen3Effect(move: AnyObject): string {
 	if (!move?.exists) return '';
 	const id = move.id as string;
-	// EFFECT_REST is its own script — must precede the sleep/heal classifiers,
-	// which Rest would otherwise match (it sleeps the user and has the heal flag).
-	if (id === 'rest') return 'rest';
-	// EFFECT_SPEED_DOWN_HIT: damaging moves whose secondary drops Speed are
-	// scored through AI_CV_SpeedDown (SpeedDownFromChance dispatches these three).
-	if (id === 'icywind' || id === 'rocktomb' || id === 'mudshot') return 'speed-down';
-	// Screens are scored off the foe's likely attacking side (its types).
-	if (id === 'lightscreen') return 'lightscreen';
-	if (id === 'reflect') return 'reflect';
+	if (ID_EFFECTS[id]) return ID_EFFECTS[id];
 	if (move.category === 'Status') {
 		// Status-infliction families (all Status-category primary effects).
 		// EFFECT_TOXIC and EFFECT_LEECH_SEED share AI_CV_Toxic in the real game.
@@ -263,6 +270,27 @@ function statUpOffensive(
 /** The foe's current types (from its species; Gen-3 type chart via `ctx.dex`). */
 function foeTypes(foe: FoePokemon, ctx: ActiveContext): string[] {
 	return ctx.dex.species.get(foe.speciesId).types;
+}
+
+/** Our active's types (parsed from its details; Gen-3 chart via `ctx.dex`). */
+function ownTypes(ctx: ActiveContext): string[] {
+	const species = (ctx.pokemon.details || '').split(',')[0].trim();
+	return ctx.dex.species.get(species).types;
+}
+
+/** AI_CV_Curse. Ghost users trap at an HP cost; others use it as bulk-up setup. */
+function applyCurse(
+	ctx: ActiveContext, ownHp: number, rng: () => number,
+	add: (k: string, l: string, d: number) => void
+): void {
+	if (ownTypes(ctx).includes('Ghost')) {
+		if (ownHp <= 80) add('curse', 'Ghost Curse while already hurt', -1);
+		return;
+	}
+	// Non-Ghost bulk-up (our Def stage assumed neutral): three independent +1s.
+	if (rng() >= 128) add('curse', 'Curse setup', 1);
+	if (rng() >= 128) add('curse', 'Curse setup', 1);
+	if (rng() >= 128) add('curse', 'Curse setup', 1);
 }
 
 /** The foe's last used move (`get_last_used_bank_move AI_TARGET`), or null. */
@@ -384,8 +412,10 @@ function applyRest(
  * the foe's stat stages aren't visible through the protocol, so we assume they
  * are neutral (the un-boosted path the game takes at the start of a turn).
  * Screens (Reflect/Light Screen) and Defense/Sp.Def *up* read the foe's types /
- * last used move (now tracked). Still deferred: Counter/Mirror Coat, Accuracy-
- * down and Substitute's block bonus.
+ * last used move (now tracked). Also covered: Super Fang, Bide, Belly Drum,
+ * Endure, Curse, Roar/Whirlwind, Haze, Foresight, Psych Up. Still deferred:
+ * Counter/Mirror Coat, Accuracy-down, Substitute's block bonus, weather setters
+ * (need weather state + our ability) and Baton Pass/Protect (need extra tracking).
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
@@ -457,6 +487,28 @@ function applyCheckViability(
 	case 'down-def': statDownDefensive(foeHp, rng, add, 'Defense'); break;
 	case 'down-spd': statDownDefensive(foeHp, rng, add, 'Sp. Def'); break;
 	case 'down-evasion': statDownDefensive(foeHp, rng, add, 'evasion'); break;
+	case 'superfang': if (foeHp <= 50) add('superfang', 'Foe is already at half HP', -1); break;
+	case 'bide': if (ownHp <= 90) add('bide', 'Biding below full HP', -2); break;
+	case 'bellydrum': if (ownHp < 90) add('bellydrum', 'Belly Drum below 90% HP', -2); break;
+	case 'endure': {
+		// AI_CV_Endure.
+		if (ownHp < 4) add('endure', 'Endure at critical HP', -1);
+		else if (ownHp < 35) { if (rng() >= 70) add('endure', 'Endure to survive a hit', 1); } else add('endure', 'Endure at healthy HP (wasteful)', -1);
+		break;
+	}
+	case 'curse': applyCurse(ctx, ownHp, rng, add); break;
+	case 'roar': add('roar', 'Phazing an un-boosted foe', -3); break;
+	case 'haze': if (rng() >= 50) add('haze', 'Hazing with nothing to reset', -1); break;
+	case 'psychup': add('psychup', 'Nothing worth copying from the foe', -2); break;
+	case 'foresight': {
+		// AI_CV_Foresight (shipped bug: keys off the USER's Ghost/evasion).
+		if (ownTypes(ctx).includes('Ghost')) {
+			if (rng() >= 80 && rng() >= 80) add('foresight', 'Foresight (Ghost user)', 2);
+		} else {
+			add('foresight', 'Foresight is not useful here', -2);
+		}
+		break;
+	}
 	case 'up-atk': statUpOffensive(ownHp, 40, rng, add, 'atk'); break;
 	case 'up-spa': statUpOffensive(ownHp, 70, rng, add, 'spa'); break;
 	case 'up-def': statUpDefensive('def', ownHp, foe, ctx, rng, add); break;
