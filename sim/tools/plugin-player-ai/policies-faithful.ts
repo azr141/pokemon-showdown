@@ -211,6 +211,10 @@ const ID_EFFECTS: Record<string, string> = {
 	curse: 'curse', roar: 'roar', whirlwind: 'roar', haze: 'haze',
 	foresight: 'foresight', odorsleuth: 'foresight', psychup: 'psychup',
 	counter: 'counter', mirrorcoat: 'mirrorcoat',
+	substitute: 'substitute', encore: 'encore', disable: 'disable',
+	// EFFECT_MEAN_LOOK + EFFECT_TRAP both route to AI_CV_Trap.
+	meanlook: 'trap', block: 'trap', spiderweb: 'trap',
+	bind: 'trap', wrap: 'trap', firespin: 'trap', clamp: 'trap', whirlpool: 'trap', sandtomb: 'trap',
 };
 
 function gen3Effect(move: AnyObject): string {
@@ -304,6 +308,41 @@ function foeLastMove(foe: FoePokemon | undefined, ctx: ActiveContext): AnyObject
 /** Whether our active carries a move with this id (`if_has_move AI_USER`). */
 function weHaveMove(ctx: ActiveContext, id: string): boolean {
 	return ctx.moves.some(m => (m.raw.id ?? toID(m.move)) === id);
+}
+
+/** Which incoming effect (if any) a Substitute would block, from the foe's last move. */
+function substituteBlockKind(move: AnyObject): 'status' | 'confuse' | 'leechseed' | null {
+	if (move.category !== 'Status') return null;
+	if (['slp', 'tox', 'psn', 'par', 'brn'].includes(move.status as string)) return 'status';
+	if (move.volatileStatus === 'confusion') return 'confuse';
+	if (move.volatileStatus === 'leechseed') return 'leechseed';
+	return null;
+}
+
+/** AI_CV_Substitute: HP-tier discouragement, plus a small bonus when Sub blocks a status. */
+function applySubstitute(
+	ctx: ActiveContext, foe: FoePokemon | undefined, ownHp: number, foeFaster: boolean,
+	rng: () => number, add: (k: string, l: string, d: number) => void
+): void {
+	// One ~61% -1 roll per HP tier we've dropped below (Sub / Sub2 / Sub3).
+	let rolls = 0;
+	if (ownHp <= 90) rolls++;
+	if (ownHp <= 70) rolls++;
+	if (ownHp <= 50) rolls++;
+	for (let i = 0; i < rolls; i++) {
+		if (rng() >= 100) add('substitute', 'Substitute below full HP', -1);
+	}
+	// Substitute4-8: +1 if we're not slower and the foe's last move was a status
+	// this Substitute would block, not already applied (checks the foe, as shipped).
+	if (foeFaster) return;
+	const last = foeLastMove(foe, ctx);
+	if (!last) return;
+	const kind = substituteBlockKind(last);
+	let blockable = false;
+	if (kind === 'status') blockable = !foe?.status;
+	else if (kind === 'confuse') blockable = !foe?.volatiles.has('confusion' as ID);
+	else if (kind === 'leechseed') blockable = !foe?.volatiles.has('leechseed' as ID);
+	if (blockable && rng() >= 100) add('substitute', 'Substitute blocks the incoming status', 1);
 }
 
 /**
@@ -453,9 +492,10 @@ function applyRest(
  * are neutral (the un-boosted path the game takes at the start of a turn).
  * Screens (Reflect/Light Screen) and Defense/Sp.Def *up* read the foe's types /
  * last used move (now tracked). Also covered: Super Fang, Bide, Belly Drum,
- * Endure, Curse, Roar/Whirlwind, Haze, Foresight, Psych Up, Counter/Mirror Coat.
- * Still deferred: Accuracy-down, Substitute's block bonus, weather setters (need
- * weather state + our ability) and Baton Pass/Protect (need extra tracking).
+ * Endure, Curse, Roar/Whirlwind, Haze, Foresight, Psych Up, Counter/Mirror Coat,
+ * Substitute, Trap/Mean Look, Encore, Disable. Still deferred: Accuracy-down,
+ * weather setters (need weather state + our ability) and Baton Pass/Protect
+ * (need extra tracking).
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
@@ -542,6 +582,31 @@ function applyCheckViability(
 	case 'psychup': add('psychup', 'Nothing worth copying from the foe', -2); break;
 	case 'counter': applyCounterLike(ctx, foe, ownHp, AI_REFLECT_PHYS_TYPES, 'mirrorcoat', rng, add, 'counter', 'Counter'); break;
 	case 'mirrorcoat': applyCounterLike(ctx, foe, ownHp, AI_SPATK_DOWN_TYPES, 'counter', rng, add, 'mirrorcoat', 'Mirror Coat'); break;
+	case 'substitute': applySubstitute(ctx, foe, ownHp, foeFaster, rng, add); break;
+	case 'trap': {
+		// AI_CV_Trap: encourage trapping a foe that's taking residual damage.
+		const stuck = foe && (foe.status === 'tox' || foe.volatiles.has('curse' as ID) ||
+			foe.volatiles.has('perishsong' as ID) || foe.volatiles.has('attract' as ID));
+		if (stuck && rng() >= 128) add('trap', 'Trapping a foe taking residual damage', 1);
+		break;
+	}
+	case 'encore': {
+		// AI_CV_Encore (foe-disabled-move check omitted; last-move effect
+		// approximated by category — the encouraged list is essentially status moves).
+		if (foeFaster) { add('encore', 'Foe is faster — Encore is risky', -2); break; }
+		const last = foeLastMove(foe, ctx);
+		if (!last || last.category !== 'Status') { add('encore', 'Nothing bad to lock the foe into', -2); break; }
+		if (rng() >= 30) add('encore', 'Locking the foe into a bad move', 3);
+		break;
+	}
+	case 'disable': {
+		// AI_CV_Disable: +1 to disable the foe's attack; -1 if it just used status.
+		if (foeFaster) break;
+		const last = foeLastMove(foe, ctx);
+		if (last && last.basePower > 0) add('disable', 'Disabling the foe\'s attack', 1);
+		else if (rng() >= 100) add('disable', 'Little worth disabling', -1);
+		break;
+	}
 	case 'foresight': {
 		// AI_CV_Foresight (shipped bug: keys off the USER's Ghost/evasion).
 		if (ownTypes(ctx).includes('Ghost')) {

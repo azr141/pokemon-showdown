@@ -279,6 +279,17 @@ const CASES: Case[] = [
 		field: ['|move|p1a: Snorlax|Body Slam'],
 		expect: 'Counter',
 	},
+	{
+		// The (slower) foe just used a status move (Toxic), so Encore to lock it
+		// into that wasted turn is strongly encouraged.
+		name: 'Faithful (ace, CheckViability): Encores a slower foe that just used status',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Alakazam', condition: '250/250', stats: { atk: 100, def: 120, spa: 350, spd: 180, spe: 350 } },
+		foe: { set: { species: 'Blissey', ability: 'Natural Cure', nature: 'Calm', evs: { hp: 252, spd: 252 }, moves: ['Toxic'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'encore', name: 'Encore', target: 'normal' }, { id: 'roar', name: 'Roar', target: 'normal' }],
+		field: ['|move|p1a: Blissey|Toxic'],
+		expect: 'Encore',
+	},
 ];
 
 // ----------------------------------------------------------------------
