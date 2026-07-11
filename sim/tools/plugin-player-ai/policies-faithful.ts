@@ -265,6 +265,42 @@ function foeTypes(foe: FoePokemon, ctx: ActiveContext): string[] {
 	return ctx.dex.species.get(foe.speciesId).types;
 }
 
+/** The foe's last used move (`get_last_used_bank_move AI_TARGET`), or null. */
+function foeLastMove(foe: FoePokemon | undefined, ctx: ActiveContext): AnyObject | null {
+	if (!foe?.lastMove) return null;
+	const mv = ctx.dex.moves.get(foe.lastMove);
+	return mv.exists ? mv : null;
+}
+
+/**
+ * AI_CV_DefenseUp / AI_CV_SpDefUp. Both boost a defensive stat and read the
+ * foe's last move to judge whether that side is worth reinforcing. With our own
+ * stage assumed neutral we take the *Up2 branch; a +2 is possible at full HP,
+ * and the move is discouraged when it defends the wrong side or we're low.
+ */
+function statUpDefensive(
+	kind: 'def' | 'spd', ownHp: number, foe: FoePokemon | undefined, ctx: ActiveContext,
+	rng: () => number, add: (k: string, l: string, d: number) => void
+): void {
+	const key = `up-${kind}`;
+	const label = kind === 'def' ? 'Defense' : 'Sp. Def';
+	if (ownHp >= 100 && rng() >= 128) add(key, `Boosting ${label} at full HP`, 2);
+	// *Up3: at high HP the AI usually leaves it there.
+	if (ownHp >= 70 && rng() < 200) return;
+	// *Up4:
+	if (ownHp < 40) { add(key, `Boosting ${label} while badly hurt`, -2); return; }
+	const last = foeLastMove(foe, ctx);
+	if (last && last.basePower > 0) {
+		const lastPhysical = AI_REFLECT_PHYS_TYPES.has(last.type as string);
+		// Defense wants a physical attacker; Sp.Def wants a special one.
+		const wrongSide = kind === 'def' ? !lastPhysical : lastPhysical;
+		if (wrongSide) { add(key, `Foe attacks the other side — ${label} misplaced`, -2); return; }
+		if (rng() < 60) return;
+	}
+	// *Up5 (shared by the power-0 path): the residual ~77% -2.
+	if (rng() >= 60) add(key, `Boosting ${label} is low-value now`, -2);
+}
+
 // AI_CV_AttackDown / AI_CV_SpAtkDown consult these type lists to guess whether
 // the foe is a physical / special attacker worth debuffing. The Attack list is
 // bugged in-game (it omits Flying, Poison and Ghost); we replicate that.
@@ -346,9 +382,10 @@ function applyRest(
  * Acc/Evasion) and stat-drops (Atk/SpA/Def/SpD/Spe/Evasion), and the status
  * families (Sleep/Toxic+Leech Seed/Poison/Paralyze/Confuse). Note: our own and
  * the foe's stat stages aren't visible through the protocol, so we assume they
- * are neutral (the un-boosted path the game takes at the start of a turn);
- * Defense/Sp.Def *up*, Accuracy-down and Substitute are deferred (they read the
- * foe's last used move).
+ * are neutral (the un-boosted path the game takes at the start of a turn).
+ * Screens (Reflect/Light Screen) and Defense/Sp.Def *up* read the foe's types /
+ * last used move (now tracked). Still deferred: Counter/Mirror Coat, Accuracy-
+ * down and Substitute's block bonus.
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
@@ -422,6 +459,8 @@ function applyCheckViability(
 	case 'down-evasion': statDownDefensive(foeHp, rng, add, 'evasion'); break;
 	case 'up-atk': statUpOffensive(ownHp, 40, rng, add, 'atk'); break;
 	case 'up-spa': statUpOffensive(ownHp, 70, rng, add, 'spa'); break;
+	case 'up-def': statUpDefensive('def', ownHp, foe, ctx, rng, add); break;
+	case 'up-spd': statUpDefensive('spd', ownHp, foe, ctx, rng, add); break;
 	case 'up-spe': {
 		// AI_CV_SpeedUp: only worth it against a faster foe.
 		if (foeFaster) {

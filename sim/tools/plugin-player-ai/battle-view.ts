@@ -32,6 +32,11 @@ export interface FoePokemon {
 	status?: ID;
 	/** Move ids the foe has used so far (deduped, insertion-ordered). */
 	revealedMoves: ID[];
+	/**
+	 * The move id the foe used most recently (mirrors the games' `gLastMoves`,
+	 * read by the AI's `get_last_used_bank_move`). Cleared on switch-in.
+	 */
+	lastMove?: ID;
 	/** Item id, once revealed (e.g. via |-item|, |-enditem|, Knock Off, etc.). */
 	revealedItem?: ID;
 	/** Ability id, once revealed. */
@@ -382,8 +387,10 @@ export class BattleView {
 		foe.slot = parsed.slot;
 		foe.hpPercent = hp.hpPercent;
 		foe.status = hp.status;
-		// Switching clears volatile statuses (with a few edge cases we don't track).
+		// Switching clears volatile statuses (with a few edge cases we don't track)
+		// and resets the last-used move (the games' gLastMoves is per-turn-in).
 		foe.volatiles = new Set();
+		foe.lastMove = undefined;
 		this.foeActive.set(parsed.slot, foe);
 		this.foeRevealed.set(speciesId, foe);
 	}
@@ -420,7 +427,9 @@ export class BattleView {
 		const foe = this.foeActive.get(parsed.slot);
 		if (!foe) return;
 		const id = toID(move);
-		if (id && !foe.revealedMoves.includes(id)) foe.revealedMoves.push(id);
+		if (!id) return;
+		foe.lastMove = id;
+		if (!foe.revealedMoves.includes(id)) foe.revealedMoves.push(id);
 	}
 
 	private handleHpUpdate(ident: string, hpStatus: string) {

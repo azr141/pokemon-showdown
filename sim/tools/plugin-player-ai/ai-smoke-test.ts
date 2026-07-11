@@ -247,6 +247,17 @@ const CASES: Case[] = [
 		moves: [{ id: 'reflect', name: 'Reflect', target: 'self' }, { id: 'lightscreen', name: 'Light Screen', target: 'self' }],
 		expect: 'Light Screen',
 	},
+	{
+		// Iron Defense (a Defense-up move) is abandoned when we're badly hurt —
+		// the AI attacks instead. Exercises the AI_CV_DefenseUp handler.
+		name: 'Faithful (ace, CheckViability): will not Iron Defense while badly hurt (attacks)',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Regirock', condition: '80/300', stats: { atk: 320, def: 300, spa: 100, spd: 200, spe: 100 } },
+		foe: { set: { species: 'Gardevoir', ability: 'Trace', nature: 'Modest', evs: { spa: 252, spe: 252 }, moves: ['Psychic'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'irondefense', name: 'Iron Defense', target: 'self' }, { id: 'rockslide', name: 'Rock Slide' }],
+		field: ['|move|p1a: Gardevoir|Psychic'],
+		expect: 'Rock Slide',
+	},
 ];
 
 // ----------------------------------------------------------------------
