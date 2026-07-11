@@ -210,6 +210,7 @@ const ID_EFFECTS: Record<string, string> = {
 	superfang: 'superfang', bide: 'bide', bellydrum: 'bellydrum', endure: 'endure',
 	curse: 'curse', roar: 'roar', whirlwind: 'roar', haze: 'haze',
 	foresight: 'foresight', odorsleuth: 'foresight', psychup: 'psychup',
+	counter: 'counter', mirrorcoat: 'mirrorcoat',
 };
 
 function gen3Effect(move: AnyObject): string {
@@ -298,6 +299,45 @@ function foeLastMove(foe: FoePokemon | undefined, ctx: ActiveContext): AnyObject
 	if (!foe?.lastMove) return null;
 	const mv = ctx.dex.moves.get(foe.lastMove);
 	return mv.exists ? mv : null;
+}
+
+/** Whether our active carries a move with this id (`if_has_move AI_USER`). */
+function weHaveMove(ctx: ActiveContext, id: string): boolean {
+	return ctx.moves.some(m => (m.raw.id ?? toID(m.move)) === id);
+}
+
+/**
+ * AI_CV_Counter / AI_CV_MirrorCoat (shipped, non-BUGFIX behaviour). Both read
+ * the foe's last used move: +1 if it was a hit of the side we can bounce
+ * (physical for Counter, special for Mirror Coat), -1 if it was the wrong side.
+ * Carrying the opposite move triggers the random +4 "which one will they use?"
+ * mind-game, and a status/none last move falls back to guessing from types.
+ */
+function applyCounterLike(
+	ctx: ActiveContext, foe: FoePokemon | undefined, ownHp: number, sideTypes: Set<string>,
+	pairedMoveId: string, rng: () => number, add: (k: string, l: string, d: number) => void,
+	key: string, label: string
+): void {
+	if (foe && (foe.status === 'slp' || foe.volatiles.has('attract') || foe.volatiles.has('confusion'))) {
+		add(key, `${label} is unreliable vs an inactive foe`, -1);
+		return;
+	}
+	if (ownHp <= 30 && rng() >= 10) add(key, `${label} while low on HP`, -1);
+	if (ownHp <= 50 && rng() >= 100) add(key, `${label} while somewhat hurt`, -1);
+	if (weHaveMove(ctx, pairedMoveId)) {
+		if (rng() >= 100) add(key, `${label}/counter mix-up`, 4);
+		return;
+	}
+	const last = foeLastMove(foe, ctx);
+	if (last && last.basePower > 0) {
+		if (!sideTypes.has(last.type as string)) { add(key, `Foe's last hit was the wrong kind`, -1); return; }
+		if (rng() >= 100) add(key, `Foe just used a bounceable move`, 1);
+		return;
+	}
+	// power == 0: the foe's last move was status / none — guess from its types.
+	if (foe && foeTypes(foe, ctx).some(t => sideTypes.has(t))) return;
+	if (rng() < 50) return;
+	if (rng() >= 100) add(key, `Anticipating a bounceable hit`, 4);
 }
 
 /**
@@ -413,9 +453,9 @@ function applyRest(
  * are neutral (the un-boosted path the game takes at the start of a turn).
  * Screens (Reflect/Light Screen) and Defense/Sp.Def *up* read the foe's types /
  * last used move (now tracked). Also covered: Super Fang, Bide, Belly Drum,
- * Endure, Curse, Roar/Whirlwind, Haze, Foresight, Psych Up. Still deferred:
- * Counter/Mirror Coat, Accuracy-down, Substitute's block bonus, weather setters
- * (need weather state + our ability) and Baton Pass/Protect (need extra tracking).
+ * Endure, Curse, Roar/Whirlwind, Haze, Foresight, Psych Up, Counter/Mirror Coat.
+ * Still deferred: Accuracy-down, Substitute's block bonus, weather setters (need
+ * weather state + our ability) and Baton Pass/Protect (need extra tracking).
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
@@ -500,6 +540,8 @@ function applyCheckViability(
 	case 'roar': add('roar', 'Phazing an un-boosted foe', -3); break;
 	case 'haze': if (rng() >= 50) add('haze', 'Hazing with nothing to reset', -1); break;
 	case 'psychup': add('psychup', 'Nothing worth copying from the foe', -2); break;
+	case 'counter': applyCounterLike(ctx, foe, ownHp, AI_REFLECT_PHYS_TYPES, 'mirrorcoat', rng, add, 'counter', 'Counter'); break;
+	case 'mirrorcoat': applyCounterLike(ctx, foe, ownHp, AI_SPATK_DOWN_TYPES, 'counter', rng, add, 'mirrorcoat', 'Mirror Coat'); break;
 	case 'foresight': {
 		// AI_CV_Foresight (shipped bug: keys off the USER's Ghost/evasion).
 		if (ownTypes(ctx).includes('Ghost')) {

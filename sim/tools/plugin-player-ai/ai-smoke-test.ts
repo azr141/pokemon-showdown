@@ -268,6 +268,17 @@ const CASES: Case[] = [
 		moves: [{ id: 'haze', name: 'Haze', target: 'self' }, { id: 'roar', name: 'Roar', target: 'normal' }],
 		expect: 'Haze',
 	},
+	{
+		// The foe just used a physical move (Body Slam), so Counter is on-side and
+		// encouraged; the AI takes it over phazing.
+		name: 'Faithful (ace, CheckViability): Counter is favoured after the foe uses a physical move',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Wobbuffet', condition: '600/600', stats: { atk: 100, def: 200, spa: 100, spd: 200, spe: 80 } },
+		foe: { set: { species: 'Snorlax', ability: 'Immunity', nature: 'Adamant', evs: { atk: 252, hp: 252 }, moves: ['Body Slam'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'counter', name: 'Counter' }, { id: 'roar', name: 'Roar', target: 'normal' }],
+		field: ['|move|p1a: Snorlax|Body Slam'],
+		expect: 'Counter',
+	},
 ];
 
 // ----------------------------------------------------------------------
