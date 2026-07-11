@@ -637,8 +637,10 @@ function applyCheckViability(
 	case 'recharge': {
 		// AI_CV_Recharge (Hyper Beam etc.): discouraged unless it's a finishing blow.
 		if (resisted) { add('recharge', 'Recharge move is resisted', -1); break; }
-		if (foeFaster) { if (ownHp >= 60) add('recharge', 'Recharge move while healthy', -1); }
-		else if (ownHp > 40) add('recharge', 'Recharge move while healthy', -1);
+		// Discouraged while healthy: foe-faster path keeps it above 60% HP (else it
+		// finishes), our-faster path above 40%.
+		const healthy = foeFaster ? ownHp >= 60 : ownHp > 40;
+		if (healthy) add('recharge', 'Recharge move while healthy', -1);
 		break;
 	}
 	case 'chargeup': {
