@@ -206,6 +206,9 @@ function gen3Effect(move: AnyObject): string {
 	// EFFECT_SPEED_DOWN_HIT: damaging moves whose secondary drops Speed are
 	// scored through AI_CV_SpeedDown (SpeedDownFromChance dispatches these three).
 	if (id === 'icywind' || id === 'rocktomb' || id === 'mudshot') return 'speed-down';
+	// Screens are scored off the foe's likely attacking side (its types).
+	if (id === 'lightscreen') return 'lightscreen';
+	if (id === 'reflect') return 'reflect';
 	if (move.category === 'Status') {
 		// Status-infliction families (all Status-category primary effects).
 		// EFFECT_TOXIC and EFFECT_LEECH_SEED share AI_CV_Toxic in the real game.
@@ -267,6 +270,23 @@ function foeTypes(foe: FoePokemon, ctx: ActiveContext): string[] {
 // bugged in-game (it omits Flying, Poison and Ghost); we replicate that.
 const AI_ATTACK_DOWN_TYPES = new Set(['Normal', 'Fighting', 'Ground', 'Rock', 'Bug', 'Steel']);
 const AI_SPATK_DOWN_TYPES = new Set(['Fire', 'Water', 'Grass', 'Electric', 'Psychic', 'Ice', 'Dragon', 'Dark']);
+// AI_CV_Reflect's physical-type list is the *complete* one (unlike the bugged
+// AttackDown list above); Light Screen reuses the special list (AI_SPATK_DOWN_TYPES).
+const AI_REFLECT_PHYS_TYPES = new Set(['Normal', 'Fighting', 'Flying', 'Poison', 'Ground', 'Rock', 'Bug', 'Ghost', 'Steel']);
+
+/**
+ * AI_CV_LightScreen / AI_CV_Reflect. Discouraged when we're low, or when the
+ * foe's types suggest it won't attack on the screened side (special vs
+ * physical). Keys off the foe's types, not its last move.
+ */
+function applyScreen(
+	ownHp: number, foe: FoePokemon | undefined, ctx: ActiveContext, relevant: Set<string>,
+	rng: () => number, add: (k: string, l: string, d: number) => void, label: string
+): void {
+	if (ownHp < 50) { add('screen', `${label} while too low on HP`, -2); return; }
+	const isRelevant = foe ? foeTypes(foe, ctx).some(t => relevant.has(t)) : false;
+	if (!isRelevant && rng() >= 50) add('screen', `Foe unlikely to attack into ${label}`, -2);
+}
 
 /**
  * AI_CV_DefenseDown / SpDefDown / EvasionDown share one shape. With the foe's
@@ -383,6 +403,8 @@ function applyCheckViability(
 		break;
 	}
 	case 'rest': applyRest(ownHp, foeFaster, rng, add); break;
+	case 'lightscreen': applyScreen(ownHp, foe, ctx, AI_SPATK_DOWN_TYPES, rng, add, 'Light Screen'); break;
+	case 'reflect': applyScreen(ownHp, foe, ctx, AI_REFLECT_PHYS_TYPES, rng, add, 'Reflect'); break;
 	case 'down-spe':
 	case 'speed-down': {
 		// AI_CV_SpeedDown (also Icy Wind / Rock Tomb / Mud Shot).

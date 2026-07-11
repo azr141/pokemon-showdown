@@ -237,6 +237,16 @@ const CASES: Case[] = [
 		moves: [{ id: 'rest', name: 'Rest', target: 'self' }, { id: 'bodyslam', name: 'Body Slam' }],
 		expect: 'Rest',
 	},
+	{
+		// Vs a pure special attacker, Reflect is the wrong screen (-2 for the foe
+		// not being a physical type) so the AI puts up Light Screen instead.
+		name: 'Faithful (ace, CheckViability): picks Light Screen over Reflect vs a special attacker',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Claydol', condition: '300/300', stats: { atk: 200, def: 250, spa: 200, spd: 250, spe: 150 } },
+		foe: { set: { species: 'Alakazam', ability: 'Synchronize', nature: 'Timid', evs: { spa: 252, spe: 252 }, moves: ['Psychic'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'reflect', name: 'Reflect', target: 'self' }, { id: 'lightscreen', name: 'Light Screen', target: 'self' }],
+		expect: 'Light Screen',
+	},
 ];
 
 // ----------------------------------------------------------------------
