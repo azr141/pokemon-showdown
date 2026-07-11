@@ -290,6 +290,17 @@ const CASES: Case[] = [
 		field: ['|move|p1a: Blissey|Toxic'],
 		expect: 'Encore',
 	},
+	{
+		// The foe has revealed Protect, so the telegraphed Solar Beam is penalised
+		// (-2) and the AI takes the immediate (weaker) Giga Drain instead.
+		name: 'Faithful (ace, CheckViability): avoids a charge move (Solar Beam) vs a Protect user',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Venusaur', condition: '360/360', stats: { atk: 200, def: 220, spa: 300, spd: 240, spe: 200 } },
+		foe: { set: { species: 'Snorlax', ability: 'Thick Fat', nature: 'Careful', evs: { hp: 252, spd: 252 }, moves: ['Protect', 'Body Slam'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'solarbeam', name: 'Solar Beam' }, { id: 'gigadrain', name: 'Giga Drain' }],
+		field: ['|move|p1a: Snorlax|Protect'],
+		expect: 'Giga Drain',
+	},
 ];
 
 // ----------------------------------------------------------------------

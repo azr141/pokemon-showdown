@@ -191,7 +191,7 @@ function scoreFaithful(
 	}
 
 	// --- AI_CheckViability (ported incrementally, effect by effect) ---
-	if (flags.checkViability) applyCheckViability(move, ctx, foe, ownHp, add);
+	if (flags.checkViability) applyCheckViability(move, ctx, foe, ownHp, est.effectiveness, add);
 
 	return { score, reasons };
 }
@@ -215,6 +215,11 @@ const ID_EFFECTS: Record<string, string> = {
 	// EFFECT_MEAN_LOOK + EFFECT_TRAP both route to AI_CV_Trap.
 	meanlook: 'trap', block: 'trap', spiderweb: 'trap',
 	bind: 'trap', wrap: 'trap', firespin: 'trap', clamp: 'trap', whirlpool: 'trap', sandtomb: 'trap',
+	// Type-effectiveness-scored damaging moves.
+	dreameater: 'dreameater',
+	absorb: 'absorb', megadrain: 'absorb', gigadrain: 'absorb', leechlife: 'absorb',
+	hyperbeam: 'recharge', blastburn: 'recharge', hydrocannon: 'recharge', frenzyplant: 'recharge',
+	solarbeam: 'chargeup', skyattack: 'chargeup', razorwind: 'chargeup', skullbash: 'chargeup',
 };
 
 function gen3Effect(move: AnyObject): string {
@@ -249,6 +254,8 @@ function gen3Effect(move: AnyObject): string {
 			if (val < 0 && move.target !== 'self') return `down-${stat}`;
 		}
 	}
+	// EFFECT_HIGH_CRITICAL (Slash / Crabhammer / Aeroblast / Cross Chop / ...).
+	if (move.category !== 'Status' && (move.critRatio ?? 1) >= 2) return 'highcrit';
 	return '';
 }
 
@@ -493,17 +500,20 @@ function applyRest(
  * Screens (Reflect/Light Screen) and Defense/Sp.Def *up* read the foe's types /
  * last used move (now tracked). Also covered: Super Fang, Bide, Belly Drum,
  * Endure, Curse, Roar/Whirlwind, Haze, Foresight, Psych Up, Counter/Mirror Coat,
- * Substitute, Trap/Mean Look, Encore, Disable. Still deferred: Accuracy-down,
- * weather setters (need weather state + our ability) and Baton Pass/Protect
- * (need extra tracking).
+ * Substitute, Trap/Mean Look, Encore, Disable, and the type-effectiveness-scored
+ * damaging moves (Absorb/drain, Dream Eater, High Crit, Recharge, Charge-up).
+ * Still deferred: Accuracy-down, weather setters (need weather state + our
+ * ability) and Baton Pass/Protect (need extra tracking).
  */
 function applyCheckViability(
 	move: AnyObject, ctx: ActiveContext, foe: FoePokemon | undefined,
-	ownHp: number, add: (k: string, l: string, d: number) => void
+	ownHp: number, eff: number, add: (k: string, l: string, d: number) => void
 ): void {
 	const rng = () => ctx.prng.random(256);
 	const foeHp = foe ? foe.hpPercent : 100;
 	const foeFaster = foe ? !weOutspeed(ctx, foe) : false;
+	const resisted = eff > 0 && eff < 1;
+	const superEff = eff >= 2;
 	switch (gen3Effect(move)) {
 	case 'sleep': {
 		// AI_CV_Sleep: +1 (50%) only if we can exploit sleep (Dream Eater / Nightmare).
@@ -605,6 +615,40 @@ function applyCheckViability(
 		const last = foeLastMove(foe, ctx);
 		if (last && last.basePower > 0) add('disable', 'Disabling the foe\'s attack', 1);
 		else if (rng() >= 100) add('disable', 'Little worth disabling', -1);
+		break;
+	}
+	case 'absorb': {
+		// AI_CV_Absorb: draining moves are discouraged when resisted.
+		if (resisted && rng() >= 50) add('absorb', 'Drain move is resisted', -3);
+		break;
+	}
+	case 'dreameater': {
+		// AI_CV_DreamEater (viability): -1 when resisted (the "foe asleep" gate is
+		// the separate AI_CheckBadMove -8).
+		if (resisted) add('dreameater', 'Dream Eater is resisted', -1);
+		break;
+	}
+	case 'highcrit': {
+		// AI_CV_HighCrit: a small bonus for high-crit moves that aren't resisted.
+		if (resisted) break;
+		if (superEff || rng() >= 128) { if (rng() >= 128) add('highcrit', 'High-crit move', 1); }
+		break;
+	}
+	case 'recharge': {
+		// AI_CV_Recharge (Hyper Beam etc.): discouraged unless it's a finishing blow.
+		if (resisted) { add('recharge', 'Recharge move is resisted', -1); break; }
+		if (foeFaster) { if (ownHp >= 60) add('recharge', 'Recharge move while healthy', -1); }
+		else if (ownHp > 40) add('recharge', 'Recharge move while healthy', -1);
+		break;
+	}
+	case 'chargeup': {
+		// AI_CV_ChargeUpMove (Solar Beam / Sky Attack / ...).
+		if (resisted) { add('chargeup', 'Charge move is resisted', -2); break; }
+		if (foe?.revealedMoves.some(m => m === 'protect' || m === 'detect')) {
+			add('chargeup', 'Foe can Protect through the charge', -2);
+		} else if (ownHp <= 38) {
+			add('chargeup', 'Charging while low is risky', -1);
+		}
 		break;
 	}
 	case 'foresight': {
