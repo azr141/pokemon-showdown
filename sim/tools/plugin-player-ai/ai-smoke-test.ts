@@ -301,6 +301,18 @@ const CASES: Case[] = [
 		field: ['|move|p1a: Snorlax|Protect'],
 		expect: 'Giga Drain',
 	},
+	{
+		// Counter is a 0-BP "MOVE_POWER_OTHER" move, so AI_CheckBadMove does NOT
+		// apply the type-immunity -10 vs a Ghost (which the real Emerald AI skips).
+		// Without the fix Counter would drop to 90 and lose to Roar (96).
+		name: 'Faithful (ace): Counter vs a Ghost is not mis-penalised as immune (beats Roar)',
+		gen: 3, ai: 'faithfulace',
+		self: { species: 'Wobbuffet', condition: '600/600', stats: { atk: 200, def: 200, spa: 150, spd: 200, spe: 80 } },
+		foe: { set: { species: 'Gengar', ability: 'Levitate', nature: 'Timid', evs: { spa: 252, spe: 252 }, moves: ['Shadow Ball'], level: 100 }, hpPercent: 100 },
+		moves: [{ id: 'counter', name: 'Counter' }, { id: 'roar', name: 'Roar', target: 'normal' }],
+		field: ['|move|p1a: Gengar|Shadow Ball'],
+		expect: 'Counter',
+	},
 ];
 
 // ----------------------------------------------------------------------

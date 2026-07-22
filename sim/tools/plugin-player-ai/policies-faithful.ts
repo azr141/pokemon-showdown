@@ -69,6 +69,24 @@ const SELF_KO_MOVES = new Set([
 	'selfdestruct', 'explosion', 'memento', 'finalgambit', 'mistyexplosion',
 ]);
 
+/**
+ * Effects the game classifies as MOVE_POWER_OTHER even though they carry real
+ * base power (`sIgnoredPowerfulMoveEffects`). Together with all base-power-0
+ * moves, these are the moves that SKIP AI_CheckBadMove's type/ability-immunity
+ * check — the real AI only re-forces the OHKO moves Fissure / Horn Drill in.
+ */
+const IGNORED_POWERFUL_IDS = new Set([
+	'explosion', 'selfdestruct', 'dreameater', 'razorwind', 'skyattack',
+	'hyperbeam', 'blastburn', 'hydrocannon', 'frenzyplant', 'skullbash',
+	'solarbeam', 'spitup', 'focuspunch', 'superpower', 'eruption', 'waterspout', 'overheat',
+]);
+const FORCED_IMMUNITY_MOVES = new Set(['fissure', 'horndrill']);
+
+/** Mirror of get_how_powerful_move_is: is this move MOVE_POWER_OTHER? */
+function isMovePowerOther(move: AnyObject): boolean {
+	return (move.basePower ?? 0) <= 1 || IGNORED_POWERFUL_IDS.has(move.id as string);
+}
+
 /** Gen 3 abilities that grant a full type immunity the AI knows about. */
 const GEN3_ABILITY_IMMUNITY: Record<string, string> = {
 	levitate: 'Ground', flashfire: 'Fire', waterabsorb: 'Water', voltabsorb: 'Electric',
@@ -148,8 +166,13 @@ function scoreFaithful(
 	// --- AI_CheckBadMove ---
 	if (flags.checkBadMove) {
 		// Immunity (type or ability) — the est is pre-zeroed for ability
-		// immunity in faithfulScoreMove, so effectiveness 0 covers both.
-		if (isDamaging && est.effectiveness === 0) {
+		// immunity in faithfulScoreMove, so effectiveness 0 covers both. The real
+		// AI_CheckBadMove runs this check only on moves with real, non-ignored
+		// base power (MOVE_POWER_OTHER moves — incl. Counter/Mirror Coat/Super
+		// Fang and the ignored-powerful effects — skip it), plus the explicitly
+		// re-forced OHKO moves Fissure / Horn Drill.
+		const checksImmunity = FORCED_IMMUNITY_MOVES.has(move.id as string) || !isMovePowerOther(move);
+		if (isDamaging && est.effectiveness === 0 && checksImmunity) {
 			add('immune', 'Foe is immune — no effect', -10);
 		}
 		if (!isDamaging && (move.status || move.volatileStatus) && foe?.status) {
