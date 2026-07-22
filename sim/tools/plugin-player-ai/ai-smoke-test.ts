@@ -29,7 +29,9 @@ interface Case {
 	field?: string[]; // extra protocol lines (e.g. '|-sidestart|p1: Rival|move: Stealth Rock')
 	/** AI id to run (registry key). Defaults to the polished 'ingame'. */
 	ai?: string;
-	expect: string; // expected chosen move name
+	expect?: string; // expected chosen move name (omit for score-only assertions)
+	/** Assert exact scores for specific moves — robust when the top is a tie. */
+	expectScores?: { [move: string]: number };
 }
 
 function buildCtx(c: Case): ActiveContext {
@@ -147,11 +149,14 @@ const CASES: Case[] = [
 		expect: 'Shadow Sneak',
 	},
 	{
-		// Authentic Emerald: Explosion is the highest-damage move → it alone
-		// escapes the -1 "not strongest" penalty, and with a backup on the
-		// bench AI_CheckBadMove doesn't penalise it. So it explodes. The
-		// polished AI deliberately avoids this; the faithful AI copies the game.
-		name: 'Faithful (gym): explodes when Explosion is the strongest move + has backup (real Emerald)',
+		// Explosion's effect is in sIgnoredPowerfulMoveEffects, so
+		// get_how_powerful_move_is classes it MOVE_POWER_OTHER: it is neither
+		// penalised as "not the strongest move" nor given a KO bonus (self-KO is
+		// excluded). It sits at a flat 100 and merely TIES the best attack — the
+		// trainer explodes via the random tie-break, not reliably. (Stealth Rock,
+		// also MOVE_POWER_OTHER, likewise stays 100.) An earlier version of this
+		// test asserted a *reliable* Explosion; that was a misread of the AI.
+		name: 'Faithful (gym): Explosion is MOVE_POWER_OTHER — flat 100, ties (not reliably chosen)',
 		gen: 4, ai: 'faithfulgym',
 		self: { species: 'Bronzong', condition: '360/360', item: 'leftovers', stats: { atk: 214, def: 271, spa: 194, spd: 258, spe: 63 } },
 		foe: { set: { species: 'Garchomp', ability: 'Rough Skin', nature: 'Jolly', evs: { atk: 252, spe: 252 }, moves: ['Earthquake'], level: 100 }, hpPercent: 100 },
@@ -162,7 +167,7 @@ const CASES: Case[] = [
 			{ id: 'explosion', name: 'Explosion' },
 		],
 		switches: 1,
-		expect: 'Explosion',
+		expectScores: { 'Explosion': 100, 'Stealth Rock': 100 },
 	},
 	{
 		name: 'Faithful (gym): avoids ability-immune Earthquake into Levitate; uses strongest legal move',
@@ -322,12 +327,19 @@ const CASES: Case[] = [
 let failures = 0;
 for (const c of CASES) {
 	const { chosen, explain } = decide(c);
-	const ok = chosen === c.expect;
+	const problems: string[] = [];
+	if (c.expect && chosen !== c.expect) problems.push(`expected chosen ${c.expect}, got ${chosen}`);
+	for (const [mv, want] of Object.entries(c.expectScores ?? {})) {
+		const t = explain.find(e => e.move === mv);
+		if (!t) problems.push(`no trace for ${mv}`);
+		else if (t.score !== want) problems.push(`${mv} score ${t.score}, expected ${want}`);
+	}
+	const ok = problems.length === 0;
 	if (!ok) failures++;
 	const tag = ok ? '[OK  ]' : '[FAIL]';
 	console.log(`${tag} ${c.name}`);
 	if (!ok) {
-		console.log(`        expected ${c.expect}, got ${chosen}`);
+		for (const p of problems) console.log(`        ${p}`);
 		for (const t of explain) {
 			console.log(`          ${t.move} = ${t.score}${t.canKO ? ' [KO]' : ''}  ${t.reasons.map(r => `${r.delta >= 0 ? '+' : ''}${r.delta} ${r.label}`).join(' · ')}`);
 		}

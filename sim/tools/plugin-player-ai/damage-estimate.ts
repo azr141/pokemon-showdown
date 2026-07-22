@@ -50,6 +50,12 @@ function parseLevel(details: string): number {
 	return 100;
 }
 
+/** Our current absolute HP from a `cur/max [status]` condition string, or null. */
+function parseCurHp(condition: string | undefined): number | null {
+	const cur = parseInt((condition || '').split('/')[0]);
+	return isNaN(cur) ? null : cur;
+}
+
 /** The foe's max HP — exact from the known set, else estimated from base. */
 function getFoeMaxHp(foe: FoePokemon, ctx: ActiveContext): number {
 	const known = ctx.view.foeKnownSets.get(foe.speciesId);
@@ -164,6 +170,18 @@ export function estimateDamage(
 		}
 		if (move.ohko) {
 			return { percent: 100, canKO: true, effectiveness: eff };
+		}
+		// Super Fang / Endeavor set the target's HP directly — their damage is
+		// HP-relative and they (essentially) can't KO, so estimate exactly rather
+		// than as a ~60 BP hit (which would invent a false KO at low foe HP).
+		if (move.id === 'superfang') {
+			const dmg = Math.max(1, Math.floor(curHp / 2));
+			return { percent: (dmg / maxHp) * 100, canKO: dmg >= curHp, effectiveness: eff };
+		}
+		if (move.id === 'endeavor') {
+			const ourCur = parseCurHp(ctx.pokemon.condition);
+			const dmg = ourCur !== null && curHp > ourCur ? curHp - ourCur : 0;
+			return { percent: (dmg / maxHp) * 100, canKO: false, effectiveness: eff };
 		}
 		basePower = variableBasePower(move.id as string, ctx, foe, ourSpecies) ?? 60;
 	}

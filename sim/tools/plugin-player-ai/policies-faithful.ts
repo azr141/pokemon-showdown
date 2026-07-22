@@ -161,6 +161,7 @@ function scoreFaithful(
 	};
 	const isDamaging = move.category !== 'Status';
 	const isSelfKO = SELF_KO_MOVES.has(move.id as string);
+	const isOther = isMovePowerOther(move);
 	const ownHp = ownHpPercent(ctx);
 
 	// --- AI_CheckBadMove ---
@@ -205,7 +206,9 @@ function scoreFaithful(
 				add('ko', 'Can KO the foe', 4);
 			}
 		} else {
-			if (!isMostPowerful) add('not-strongest', 'Not the strongest move', -1);
+			// Only MOVE_NOT_MOST_POWERFUL takes the −1; MOVE_POWER_OTHER moves
+			// (status, Counter, Explosion, the ignored-powerful effects) are exempt.
+			if (!isOther && !isMostPowerful) add('not-strongest', 'Not the strongest move', -1);
 			// 4× super-effective, ~69% of the time (if_random_less_than 80).
 			if (isDamaging && est.effectiveness >= 4 && ctx.prng.random(256) >= 80) {
 				add('quad-se', '4× super-effective', 2);
@@ -751,14 +754,16 @@ export function faithfulScoreMove(flags: AiFlags): ActionPolicy {
 			}
 			return { cand, est, move: move ?? {} };
 		});
-		// "most powerful" = the single highest-damage move (get_how_powerful_move_is).
-		const maxDamage = scored.reduce((m, s) => Math.max(m, s.est.percent), 0);
+		// "most powerful" is decided ONLY among real-power moves — MOVE_POWER_OTHER
+		// moves (status, Counter, Explosion, the ignored-powerful effects) are
+		// excluded from the comparison, matching get_how_powerful_move_is.
+		const maxDamage = scored.reduce((m, s) => (isMovePowerOther(s.move) ? m : Math.max(m, s.est.percent)), 0);
 
 		const traces: MoveScoreTrace[] = [];
 		let best = -Infinity;
 		let bestCands: MoveCandidate[] = [];
 		for (const sc of scored) {
-			const isMostPowerful = maxDamage > 0 && sc.est.percent === maxDamage;
+			const isMostPowerful = !isMovePowerOther(sc.move) && maxDamage > 0 && sc.est.percent === maxDamage;
 			const { score, reasons } = scoreFaithful(sc, ctx, flags, foe, isMostPowerful);
 			traces.push({
 				move: sc.cand.move, slot: sc.cand.slot, score, chosen: false,
