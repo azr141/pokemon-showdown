@@ -81,6 +81,10 @@ export interface PrettyEvent {
 	moveCategory?: 'Physical' | 'Special' | 'Status';
 	/** For move events: the move's target type (e.g. "self", "normal", "allAdjacent"). */
 	moveTarget?: string;
+	/** For move events: the acting Pokémon's slot (e.g. "p2b") so doubles animations originate from the right side. */
+	sourcePos?: string;
+	/** For move events: the primary target's slot (e.g. "p1a"), when the protocol names one. */
+	targetPos?: string;
 	/** True when this is a two-turn move's charge turn (play prepareAnim, not anim). */
 	prepare?: boolean;
 }
@@ -522,6 +526,8 @@ export class InteractiveSession {
 			moveType: move.exists ? move.type : undefined,
 			moveCategory: move.exists ? (move.category) : undefined,
 			moveTarget: move.exists ? move.target : undefined,
+			sourcePos: slot,
+			targetPos: this.slotOf(parts[4]),
 		});
 	}
 
@@ -536,6 +542,8 @@ export class InteractiveSession {
 			moveType: move.exists ? move.type : undefined,
 			moveCategory: move.exists ? (move.category) : undefined,
 			moveTarget: move.exists ? move.target : undefined,
+			sourcePos: slot,
+			targetPos: this.slotOf(parts[4]),
 			prepare: true,
 		});
 	}
