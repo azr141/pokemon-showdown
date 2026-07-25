@@ -97,10 +97,12 @@ export interface MoveMeta {
 	category: 'Physical' | 'Special' | 'Status' | string;
 	basePower: number;
 	accuracy: number | true;
+	/** Move priority bracket (e.g. +1 for Aqua Jet, -6 for Trick Room). */
+	priority?: number;
 	pp?: number;
 	disabled?: boolean | string;
 	target?: string;
-	/** Short description of the move effect, for hover tooltips. */
+	/** Short description of the move effect, shown in the pinnable move-info card. */
 	shortDesc?: string;
 	/**
 	 * Type-chart multiplier against the foe currently in front (0, 0.25,
@@ -1088,6 +1090,7 @@ export class InteractiveSession {
 					category: move?.category ?? '?',
 					basePower: move?.basePower ?? 0,
 					accuracy: move?.accuracy ?? 100,
+					priority: move?.priority ?? 0,
 					disabled: m.disabled,
 					target: m.target,
 					shortDesc,
