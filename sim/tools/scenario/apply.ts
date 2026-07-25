@@ -217,7 +217,80 @@ export function applyVolatiles(battle: Battle, volatiles: ScenarioVolatile[] | u
 			const st = pokemon.volatiles['confusion'];
 			if (st) (st as any).time = turns;
 		}
+
+		// ---- Advanced volatiles (choice-lock / disable / encore / taunt /
+		// substitute). Active-only; applied silently so the reactive onStart
+		// (which needs a real lastMove / would re-deduct HP) doesn't fire. ----
+		const requireActive = (label: string) => {
+			if (!pokemon.isActive) {
+				throw new Error(
+					`Scenario volatile: ${label} on benched pokemon (${vol.side} slot ${vol.slot}) would be wiped on switch-in.`,
+				);
+			}
+		};
+		const moveHere = (raw: string, label: string) => {
+			const move = battle.dex.moves.get(raw);
+			if (!move.exists) throw new Error(`Scenario volatile: ${label} move '${raw}' does not exist.`);
+			if (!pokemon.hasMove(move.id)) {
+				throw new Error(`Scenario volatile: ${label} move '${move.name}' is not one of ${pokemon.name}'s moves.`);
+			}
+			return move;
+		};
+
+		if (vol.choiceLock) {
+			requireActive('choiceLock');
+			const move = moveHere(vol.choiceLock, 'choiceLock');
+			silentAddVolatile(battle, pokemon, 'choicelock', { move: move.id });
+		}
+		if (vol.disable) {
+			requireActive('disable');
+			const move = moveHere(vol.disable.move, 'disable');
+			const st = silentAddVolatile(battle, pokemon, 'disable', { move: move.id });
+			if (st && vol.disable.turns) st.duration = Math.max(1, Math.min(7, Math.floor(vol.disable.turns)));
+			battle.add('-start', pokemon, 'Disable', move.name);
+		}
+		if (vol.encore) {
+			requireActive('encore');
+			const move = moveHere(vol.encore.move, 'encore');
+			const st = silentAddVolatile(battle, pokemon, 'encore', { move: move.id });
+			if (st && vol.encore.turns) st.duration = Math.max(1, Math.min(8, Math.floor(vol.encore.turns)));
+			battle.add('-start', pokemon, 'Encore');
+		}
+		if (vol.taunt !== undefined) {
+			requireActive('taunt');
+			const st = silentAddVolatile(battle, pokemon, 'taunt', {});
+			if (st) st.duration = Math.max(1, Math.min(5, Math.floor(vol.taunt)));
+			battle.add('-start', pokemon, 'move: Taunt');
+		}
+		if (vol.substitute) {
+			requireActive('substitute');
+			const hp = vol.substitute === true
+				? Math.floor(pokemon.maxhp / 4)
+				: Math.max(1, Math.min(pokemon.maxhp, Math.floor(vol.substitute as number)));
+			silentAddVolatile(battle, pokemon, 'substitute', { hp });
+			battle.add('-start', pokemon, 'Substitute');
+		}
 	}
+}
+
+/**
+ * Attach a volatile as a fait accompli: build the effect state the way
+ * Pokemon.addVolatile would, but SKIP its reactive onStart (which for these
+ * conditions needs a real lastMove, or would re-deduct HP). `patch` fills in
+ * the fields the onStart normally sets (e.g. `move`, `hp`).
+ */
+function silentAddVolatile(
+	battle: Battle, pokemon: any, id: string, patch: Record<string, any>,
+): any {
+	const status = battle.dex.conditions.get(id);
+	if (!status.exists) return null;
+	const state = battle.initEffectState({ id: status.id, name: status.name, target: pokemon });
+	state.source = pokemon;
+	state.sourceSlot = pokemon.getSlot();
+	if ((status as any).duration) state.duration = (status as any).duration;
+	Object.assign(state, patch);
+	pokemon.volatiles[status.id] = state;
+	return state;
 }
 
 /**

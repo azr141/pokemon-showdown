@@ -60,10 +60,14 @@ export interface ScenarioField {
  * - `boosts`: stat-stage changes from -6..+6 per stat. Only meaningful on
  *   active pokemon (boosts reset on switch out anyway).
  * - `status`: a major status condition.
+ * - A curated set of "advanced" volatiles (choiceLock / disable / encore /
+ *   taunt / substitute) applied as a fait accompli. These are active-only and
+ *   only valid mid-battle. Each is context-gated by the validator: the state
+ *   must be reachable given the configured teams (a Choice-lock needs a Choice
+ *   item; a Disable/Encore/Taunt needs an opposing team member with that move).
  *
- * Things like substitute, leech seed, taunt, encore, and move-locks are
- * intentionally NOT supported here — they have cascading interactions that
- * aren't safe to fake at turn 0.
+ * Other cascading volatiles (leech seed, partial-trap, move mimicry, …) remain
+ * unsupported — they aren't safe to fake at turn 0.
  */
 export interface ScenarioVolatile {
 	side: 'p1' | 'p2';
@@ -77,6 +81,23 @@ export interface ScenarioVolatile {
 	 * wipes on switch like other volatiles.
 	 */
 	confused?: number;
+	/**
+	 * Choice-item lock: the move id/name the active pokemon is locked into.
+	 * Only valid when the pokemon holds a Choice Band/Specs/Scarf, and the move
+	 * is one of its own moves.
+	 */
+	choiceLock?: string;
+	/** Disabled move (as if an opposing Disable / Cursed Body hit it). */
+	disable?: { move: string, turns?: number };
+	/** Encore lock (as if an opposing Encore hit it). */
+	encore?: { move: string, turns?: number };
+	/** Taunt: turns remaining (as if an opposing Taunt hit it). */
+	taunt?: number;
+	/**
+	 * Substitute already up. A number is the substitute's HP; `true` uses the
+	 * default 25% of max HP. Does NOT deduct from the pokemon's own HP.
+	 */
+	substitute?: number | boolean;
 }
 
 /**

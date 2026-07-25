@@ -31,6 +31,27 @@ export function saveScenario(filePath: string, scenario: Scenario) {
 	fs.writeFileSync(filePath, JSON.stringify(scenario, null, 2) + '\n');
 }
 
+// ---- Advanced-volatile context gating ------------------------------------
+// Each advanced volatile is only reachable given the right configuration; the
+// validator enforces that so an impossible state can't be authored or imported.
+const CHOICE_ITEMS = new Set(['choiceband', 'choicespecs', 'choicescarf']);
+const ADVANCED_VOL_KEYS = ['choiceLock', 'disable', 'encore', 'taunt', 'substitute'] as const;
+
+function scenarioIsDoubles(scenario: Scenario): boolean {
+	if ((scenario as any).gameType === 'doubles') return true;
+	return /doubles|vgc/i.test(String(scenario.format || ''));
+}
+function moveIdsOf(mon: any): string[] {
+	return Array.isArray(mon?.moves) ? mon.moves.map((mv: any) => Dex.moves.get(mv).id) : [];
+}
+// "any team member has the move" — the trigger scope agreed for v1.
+function teamHasMove(team: any, moveId: string): boolean {
+	return Array.isArray(team) && team.some((m: any) => moveIdsOf(m).includes(moveId));
+}
+function monHasChoiceItem(mon: any): boolean {
+	return CHOICE_ITEMS.has(Dex.items.get(mon?.item).id);
+}
+
 /**
  * Structural / light semantic validation. Returns a list of human-readable
  * problems; empty array means the scenario is well-formed.
@@ -71,6 +92,11 @@ export function validateScenario(scenario: Scenario): string[] {
 			if (v.boosts && Object.keys(v.boosts).length > 0) {
 				problems.push(`volatiles[${i}].boosts requires startingPoint='mid' (stat changes only apply once the battle is underway).`);
 			}
+			for (const key of ADVANCED_VOL_KEYS) {
+				if ((v as any)[key] !== undefined) {
+					problems.push(`volatiles[${i}].${key} requires startingPoint='mid' (${key} only applies once the battle is underway).`);
+				}
+			}
 		}
 	}
 
@@ -93,6 +119,65 @@ export function validateScenario(scenario: Scenario): string[] {
 			if (v.confused !== undefined) {
 				if (!Number.isInteger(v.confused) || v.confused < 1 || v.confused > 5) {
 					problems.push(`volatiles[${i}].confused must be an integer in [1, 5].`);
+				}
+			}
+
+			// Advanced volatiles: active-only + context-gated by the teams.
+			const anyAdvanced = ADVANCED_VOL_KEYS.some(k => (v as any)[k] !== undefined);
+			if (anyAdvanced) {
+				const mon = (scenario as any)[v.side]?.team?.[v.slot - 1];
+				const foe = (scenario as any)[v.side === 'p1' ? 'p2' : 'p1'];
+				const activeMax = scenarioIsDoubles(scenario) ? 2 : 1;
+				if (!(Number.isInteger(v.slot) && v.slot >= 1 && v.slot <= activeMax)) {
+					problems.push(`volatiles[${i}]: advanced states apply only to the active Pokémon (slot 1${activeMax === 2 ? ' or 2' : ''}).`);
+				}
+				const monMoves = moveIdsOf(mon);
+
+				if (v.choiceLock !== undefined) {
+					if (mon && !monHasChoiceItem(mon)) {
+						problems.push(`volatiles[${i}].choiceLock requires ${v.side} slot ${v.slot} to hold a Choice item (Band/Specs/Scarf).`);
+					}
+					if (mon && !monMoves.includes(Dex.moves.get(v.choiceLock).id)) {
+						problems.push(`volatiles[${i}].choiceLock move '${v.choiceLock}' is not one of that Pokémon's moves.`);
+					}
+				}
+				if (v.disable !== undefined) {
+					if (!teamHasMove(foe?.team, 'disable')) {
+						problems.push(`volatiles[${i}].disable requires an opposing Pokémon to have Disable.`);
+					}
+					if (mon && !monMoves.includes(Dex.moves.get(v.disable.move).id)) {
+						problems.push(`volatiles[${i}].disable.move '${v.disable.move}' is not one of that Pokémon's moves.`);
+					}
+					if (v.disable.turns !== undefined && (!Number.isInteger(v.disable.turns) || v.disable.turns < 1 || v.disable.turns > 7)) {
+						problems.push(`volatiles[${i}].disable.turns must be an integer in [1, 7].`);
+					}
+				}
+				if (v.encore !== undefined) {
+					if (!teamHasMove(foe?.team, 'encore')) {
+						problems.push(`volatiles[${i}].encore requires an opposing Pokémon to have Encore.`);
+					}
+					if (mon && !monMoves.includes(Dex.moves.get(v.encore.move).id)) {
+						problems.push(`volatiles[${i}].encore.move '${v.encore.move}' is not one of that Pokémon's moves.`);
+					}
+					if (v.encore.turns !== undefined && (!Number.isInteger(v.encore.turns) || v.encore.turns < 1 || v.encore.turns > 8)) {
+						problems.push(`volatiles[${i}].encore.turns must be an integer in [1, 8].`);
+					}
+				}
+				if (v.taunt !== undefined) {
+					if (!teamHasMove(foe?.team, 'taunt')) {
+						problems.push(`volatiles[${i}].taunt requires an opposing Pokémon to have Taunt.`);
+					}
+					if (!Number.isInteger(v.taunt) || v.taunt < 1 || v.taunt > 5) {
+						problems.push(`volatiles[${i}].taunt must be an integer in [1, 5].`);
+					}
+				}
+				if (v.substitute !== undefined) {
+					if (mon && !monMoves.includes('substitute')) {
+						problems.push(`volatiles[${i}].substitute requires that Pokémon to have Substitute in its moveset.`);
+					}
+					if (typeof v.substitute === 'number' && (!Number.isInteger(v.substitute) || v.substitute < 1)) {
+						problems.push(`volatiles[${i}].substitute HP must be a positive integer (or true for the default 25%).`);
+					}
 				}
 			}
 		}
