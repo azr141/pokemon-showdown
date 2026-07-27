@@ -65,6 +65,9 @@ export interface PrettyEvent {
 	side?: 'p1' | 'p2' | null;
 	/** For damage/heal: percentage of max HP lost (negative) or gained (positive). */
 	hpDelta?: number;
+	/** For switch events: the incoming Pokémon's current HP as a 0–100 percentage, so
+	 *  the stage bar can start at its real HP (not a full bar) when it enters. */
+	hpPct?: number;
 	/** For formechange: the new species/forme name for sprite updates. */
 	newSpecies?: string;
 	/** Human-readable name of the item/ability/effect that caused this event (e.g. "Rocky Helmet", "Iron Barbs", "Leftovers"). */
@@ -700,7 +703,7 @@ export class InteractiveSession {
 		} else {
 			text = tpl(T.switchIn, { TRAINER, FULLNAME, NICKNAME });
 		}
-		this.pushEvent({ kind: 'switch', side, text });
+		this.pushEvent({ kind: 'switch', side, text, hpPct: hpData.hpPercent });
 	}
 
 	private handleDetailsChange(parts: string[]): void {
