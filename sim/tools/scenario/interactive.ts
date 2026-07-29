@@ -140,6 +140,26 @@ export interface FoeMonState {
 	speedMax?: number;
 }
 
+/**
+ * Human-side team state, read from the live battle. Unlike the request (which
+ * disappears once the battle ends), this is always present — so the result
+ * card can derive final HP, survivors and the last mon standing from the
+ * resolved state rather than a stale client cache.
+ */
+export interface MyMonState {
+	species: string;
+	level?: number;
+	gender?: string;
+	/** Absolute condition, e.g. "155/357", "155/357 par", or "0 fnt". */
+	condition: string;
+	hpPercent: number;
+	status: string | null;
+	fainted: boolean;
+	active: boolean;
+	/** Slot when active (e.g. 'p1a', 'p1b'); null when benched or fainted. */
+	slot: string | null;
+}
+
 interface PendingChoice {
 	resolve: (choice: string) => void;
 	request: ChoiceRequest;
@@ -176,6 +196,9 @@ export interface InteractiveSessionSnapshot {
 	currentMoves: MoveMeta[][] | null;
 	/** Foe mons currently known, in slot order (1..6). Index 0 is slot 1. */
 	foeTeam: FoeMonState[];
+	/** Human-side team read from the live battle — present even after the battle
+	 *  ends (when currentRequest is null), so final HP/survivors are derivable. */
+	myTeam: MyMonState[];
 	/** True if the scenario has `openTeamsheet`; the UI uses this to know it can show foe item/ability without a reveal. */
 	openTeamsheet: boolean;
 	/** Boosts on our active mon(s), keyed by slot ('p1a', 'p1b' etc). */
@@ -1186,6 +1209,7 @@ export class InteractiveSession {
 			currentRequest: this.currentRequest,
 			currentMoves: this.buildCurrentMoves(),
 			foeTeam,
+			myTeam: this.readMyTeam(),
 			openTeamsheet: !!this.scenario.openTeamsheet,
 			myBoosts: this.myBoostsPerSlot,
 			weather, terrain, pseudoWeather, sideEffects,
@@ -1270,6 +1294,38 @@ export class InteractiveSession {
 				revealedItem: base.revealedItem ?? (set.item || null),
 				revealedAbility: base.revealedAbility ?? (set.ability || null),
 				teraType: base.teraType ?? (set.teraType || null),
+			};
+		});
+	}
+
+	/**
+	 * Human-side team, read straight from the live battle so it's authoritative
+	 * and — crucially — present even after the battle ends (the request is null
+	 * by then). Full visibility: it's the player's own team.
+	 */
+	private readMyTeam(): MyMonState[] {
+		const battle = this.battleStream?.battle;
+		if (!battle) return [];
+		const side = battle.sides.find((s: any) => s.id === this.humanSide);
+		if (!side) return [];
+		return side.pokemon.map((p: any) => {
+			const maxhp = p.maxhp || 0;
+			const hp = p.hp || 0;
+			const pct = maxhp > 0 ? Math.max(0, Math.min(100, (hp / maxhp) * 100)) : 0;
+			const status = p.status ? String(p.status) : null;
+			const condition = p.fainted
+				? '0 fnt'
+				: `${hp}/${maxhp}${status ? ' ' + status : ''}`;
+			return {
+				species: p.species?.name ?? p.name,
+				level: p.level,
+				gender: p.gender || undefined,
+				condition,
+				hpPercent: pct,
+				status,
+				fainted: !!p.fainted,
+				active: !!p.isActive,
+				slot: p.isActive ? p.getSlot() : null,
 			};
 		});
 	}
