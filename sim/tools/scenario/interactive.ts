@@ -726,7 +726,9 @@ export class InteractiveSession {
 		} else {
 			text = tpl(T.switchIn, { TRAINER, FULLNAME, NICKNAME });
 		}
-		this.pushEvent({ kind: 'switch', side, text, hpPct: hpData.hpPercent });
+		// sourcePos = the exact slot the mon enters (e.g. 'p2b'), so the client
+		// places it in the right doubles slot instead of guessing slot A.
+		this.pushEvent({ kind: 'switch', side, text, hpPct: hpData.hpPercent, sourcePos: slot ?? undefined });
 	}
 
 	private handleDetailsChange(parts: string[]): void {
