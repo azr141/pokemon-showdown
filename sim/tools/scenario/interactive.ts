@@ -1102,10 +1102,21 @@ export class InteractiveSession {
 		if (!moveReq.active?.length) return null;
 		const dex = this.dex ?? Dex;
 		const activeFoes = this.foeTeam.filter(f => f.active && !f.fainted);
-		return moveReq.active.map(activeSlot => {
+		const battle = this.battleStream?.battle;
+		const myActives: any[] = (battle as any)?.[this.humanSide]?.active ?? [];
+		return moveReq.active.map((activeSlot, slotIdx) => {
 			if (!activeSlot?.moves) return [];
+			const pokemon = myActives[slotIdx];
 			return activeSlot.moves.map(m => {
 				const move = dex.moves.get(m.id ?? m.move);
+				// Effective type: Hidden Power's real type comes from the user's
+				// hidden-power IVs (gens 2-7), not the move's Normal base type, so
+				// both the type badge and the effectiveness hint were wrong before.
+				// Everything else uses the base type.
+				let effType = move?.type ?? '?';
+				if (move?.id === 'hiddenpower' && pokemon?.hpType) {
+					effType = pokemon.hpType;
+				}
 				let shortDesc = move?.shortDesc || move?.desc || '';
 				if (!shortDesc && move?.exists) {
 					const textData = dex.getDescs('Moves', move.id, dex.data.Moves[move.id] || {});
@@ -1114,7 +1125,7 @@ export class InteractiveSession {
 				const meta: MoveMeta = {
 					move: m.move,
 					id: String(m.id ?? ''),
-					type: move?.type ?? '?',
+					type: effType,
 					category: move?.category ?? '?',
 					basePower: move?.basePower ?? 0,
 					accuracy: move?.accuracy ?? 100,
@@ -1123,9 +1134,9 @@ export class InteractiveSession {
 					target: m.target,
 					shortDesc,
 				};
-				if (activeFoes.length && move?.exists && move.category !== 'Status' && move.type && move.type !== '???') {
+				if (activeFoes.length && move?.exists && move.category !== 'Status' && effType && effType !== '???') {
 					const foeTypes = this.effectiveTypesOf(activeFoes[0]);
-					meta.effectivenessVsFoe = this.computeEffectiveness(move.type, foeTypes);
+					meta.effectivenessVsFoe = this.computeEffectiveness(effType, foeTypes);
 				}
 				return meta;
 			});

@@ -398,8 +398,16 @@ const GEN_MIN: Record<string, number> = {
 	stickyweb: 6, auroraveil: 7,
 };
 
+// Upper bounds for effects renamed/removed in a later gen. Hail became Snow in
+// Gen 9, so `hail` must not validate in Gen 9 (where it would silently apply no
+// weather); `snow` is min-gated to 9 above. Without this a gen-9 scenario could
+// pass validation with `hail` and end up with no weather at all.
+const GEN_MAX: Record<string, number> = {
+	hail: 8,
+};
+
 export function allowedWeathersForGen(gen: number): readonly ID[] {
-	return ALLOWED_WEATHERS.filter(id => (GEN_MIN[id] ?? 1) <= gen);
+	return ALLOWED_WEATHERS.filter(id => (GEN_MIN[id] ?? 1) <= gen && gen <= (GEN_MAX[id] ?? 9));
 }
 export function allowedTerrainsForGen(gen: number): readonly ID[] {
 	return ALLOWED_TERRAINS.filter(id => (GEN_MIN[id] ?? 1) <= gen);
