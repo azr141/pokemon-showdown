@@ -1242,15 +1242,18 @@ export class InteractiveSession {
 			return { weather: null, terrain: null, pseudoWeather: [], sideEffects };
 		}
 		const field = battle.field;
+		// Duration 0 is the engine's "permanent" sentinel (gen 3-5 weather); report
+		// it as undefined so the UI shows no countdown rather than "0 turns left".
+		const permanentAware = (d: any) => (typeof d === 'number' && d > 0 ? d : undefined);
 		const weatherId = field.weather as string | undefined;
 		const weather = weatherId ? {
 			id: weatherId,
-			turnsRemaining: (field as any).weatherState?.duration,
+			turnsRemaining: permanentAware((field as any).weatherState?.duration),
 		} : null;
 		const terrainId = field.terrain as string | undefined;
 		const terrain = terrainId ? {
 			id: terrainId,
-			turnsRemaining: (field as any).terrainState?.duration,
+			turnsRemaining: permanentAware((field as any).terrainState?.duration),
 		} : null;
 		const pseudoWeather: FieldEffectState[] = [];
 		for (const [id, state] of Object.entries((field as any).pseudoWeather ?? {})) {

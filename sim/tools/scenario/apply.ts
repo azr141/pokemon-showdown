@@ -87,8 +87,16 @@ function silentSetWeather(battle: Battle, id: ID, turnsRemaining?: number): void
 	if (!status.exists) return;
 	(battle.field as any).weather = status.id;
 	(battle.field as any).weatherState = battle.initEffectState({ id: status.id });
-	const dur = turnsRemaining ?? (status as any).duration;
-	if (dur) (battle.field as any).weatherState.duration = Math.max(1, dur);
+	// Gen 3-5 weather never expires (matches conditions.ts: `if (this.gen <= 5)
+	// this.effectState.duration = 0`). Duration 0 is the engine's "permanent"
+	// sentinel — see field.ts's `weatherState.duration === 0` check. Only gen 6+
+	// weather carries a countdown; a scenario turnsRemaining is ignored pre-gen-6.
+	if (battle.gen <= 5) {
+		(battle.field as any).weatherState.duration = 0;
+	} else {
+		const dur = turnsRemaining ?? (status as any).duration;
+		if (dur) (battle.field as any).weatherState.duration = Math.max(1, dur);
+	}
 	battle.add('-weather', status.name);
 }
 
