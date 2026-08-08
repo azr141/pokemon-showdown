@@ -831,28 +831,34 @@ export class InteractiveSession {
 	private handleMega(parts: string[]): void {
 		const slot = this.slotOf(parts[2]);
 		const side = this.sideOf(slot);
-		const species = parts[3] ?? '?';
+		// parts[3] here is `apparentSpecies` (Pokemon#formeChange) — the BASE
+		// species for display text, deliberately not the Mega forme name (real
+		// PS protocol quirk). The actual forme change (e.g. "Gengar-Mega") is
+		// already communicated by the `detailschange` line that always precedes
+		// this one — treating parts[3] as the new species here would both (a)
+		// revert the sprite/name right after detailschange's event correctly
+		// set it, and (b) permanently overwrite FoeMonState.species with the
+		// wrong (base) name for the rest of the battle.
+		const baseSpeciesForText = parts[3] ?? '?';
 		const item = parts[4] ?? '';
-		if (side === this.aiSide) {
-			const foe = this.foeAtSlot(slot);
-			if (foe) { foe.species = species; foe.revealedItem = item || foe.revealedItem; }
-		}
 		this.pushEvent({ kind: 'effect', side,
 			text: tpl(T.mega, { POKEMON: this.nameForSide(parts[2]), ITEM: item }) });
-		this.pushEvent({ kind: 'formechange', side, newSpecies: species,
-			text: `${this.nameForSide(parts[2])} has Mega Evolved into Mega ${species}!` });
+		this.pushEvent({ kind: 'effect', side,
+			text: `${this.nameForSide(parts[2])} has Mega Evolved into Mega ${baseSpeciesForText}!` });
+		if (side === this.aiSide) {
+			const foe = this.foeAtSlot(slot);
+			if (foe) foe.revealedItem = item || foe.revealedItem;
+		}
 	}
 
 	private handleUltraBurst(parts: string[]): void {
-		const slot = this.slotOf(parts[2]);
-		const side = this.sideOf(slot);
-		const species = parts[3] ?? '?';
-		if (side === this.aiSide) {
-			const foe = this.foeAtSlot(slot);
-			if (foe) foe.species = species;
-		}
-		this.pushEvent({ kind: 'formechange', side, newSpecies: species,
-			text: `${this.nameForSide(parts[2])} underwent Ultra Burst into ${species}!` });
+		const side = this.sideOf(this.slotOf(parts[2]));
+		// Same apparentSpecies quirk as -mega (see handleMega): parts[3] is the
+		// BASE species for display text, not the real forme — detailschange
+		// already set the true species just before this line fires.
+		const baseSpeciesForText = parts[3] ?? '?';
+		this.pushEvent({ kind: 'effect', side,
+			text: `${this.nameForSide(parts[2])} underwent Ultra Burst into ${baseSpeciesForText}!` });
 	}
 
 	private handlePrimal(parts: string[]): void {
