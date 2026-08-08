@@ -739,38 +739,14 @@ export class InteractiveSession {
 		if (side === this.aiSide) {
 			const foe = this.foeAtSlot(slot);
 			if (foe) foe.species = det.species;
-		} else if (side === this.humanSide) {
-			// The engine only regenerates `currentRequest` at the NEXT decision
-			// point, so without this a mid-turn forme change on OUR side (Mega
-			// Evolution, Zen Mode, Cramorant's Gulp/Gorge forms, etc.) would keep
-			// reporting the pre-change species in every snapshot delivered for
-			// the rest of this turn — including the post-playback sync — and
-			// only catch up once a fresh request arrives. Patch the
-			// already-delivered request's `details` for the acting active slot
-			// directly, matching what a freshly-built request would show.
-			this.patchOwnActiveDetails(slot, details);
 		}
+		// No equivalent patch needed on our own side: `submitChoice` nulls
+		// `currentRequest` BEFORE the engine processes the turn (so this event
+		// always fires with it already null), and the fallback the client reads
+		// while it's null (`myTeam`, via `readMyTeam()`) is built live from the
+		// battle object on every snapshot — always current, never stale.
 		this.pushEvent({ kind: 'formechange', side, newSpecies: det.species,
 			text: `${this.sidePrefix(side)}${det.species} transformed!` });
-	}
-
-	/**
-	 * Rewrite the `details` string on our own side's active-slot entry within
-	 * the already-delivered `currentRequest`, so mid-turn forme changes are
-	 * visible in every snapshot until the next real request replaces it.
-	 * Mirrors the array-order convention `buildCurrentMoves` / the client's
-	 * `humanRow()` already rely on: active entries appear in slot order (a
-	 * before b).
-	 */
-	private patchOwnActiveDetails(slot: string | undefined, details: string): void {
-		if (!slot || !this.currentRequest) return;
-		const req = this.currentRequest as MoveRequest | undefined;
-		const pokemonList = req?.side?.pokemon;
-		if (!Array.isArray(pokemonList)) return;
-		const activeList = pokemonList.filter((p: any) => p.active);
-		const idx = slot.endsWith('b') ? 1 : 0;
-		const target = activeList[idx] as any;
-		if (target) target.details = details;
 	}
 
 	private handleBoost(parts: string[], up: boolean): void {
