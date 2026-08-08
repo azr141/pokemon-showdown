@@ -701,9 +701,13 @@ export class InteractiveSession {
 		this.lastHp.set(slot ?? '', hpData.hpPercent);
 		// Replace foe-side state for that slot.
 		if (side === this.aiSide) {
-			// Mark only the mon in THIS slot as inactive (not all foes — doubles has 2 active).
+			// Clear the slot from EVERY prior occupant of it, not just an active
+			// one — a fainted mon keeps its stale slot value (see foeAtSlot)
+			// until something switches in here, so without this a long doubles
+			// battle can accumulate multiple foeTeam entries sharing a slot and
+			// foeAtSlot's fainted-mon lookup could resolve to the wrong (older) one.
 			for (const f of this.foeTeam) {
-				if (f.active && f.slot === slot) { f.active = false; f.slot = null; }
+				if (f.slot === slot) { f.active = false; f.slot = null; }
 			}
 			// Find or create an entry by species id.
 			const existing = this.foeTeam.find(f => this.idof(f.species) === this.idof(det.species));
@@ -968,8 +972,16 @@ export class InteractiveSession {
 	private foeAtSlot(slot: string | undefined): FoeMonState | undefined {
 		if (!slot) return undefined;
 		if (this.sideOf(slot) !== this.aiSide) return undefined;
-		// Match by exact slot first (doubles-correct), fall back to any active (singles compat).
+		// 1. Exact slot match among currently active mons — the normal case.
+		// 2. Exact slot match ignoring `active` — a fainted mon's own post-faint
+		//    cleanup lines (e.g. Mega/Primal reverting on faint, which the sim
+		//    emits as a `detailschange` AFTER the `faint` line, so this mon is
+		//    already inactive by the time it fires) are legitimately about that
+		//    mon, not whichever OTHER mon happens to still be active in doubles.
+		// 3. Any active mon — last-resort singles-compat fallback for the rare
+		//    case nothing has ever been tracked at this slot.
 		return this.foeTeam.find(f => f.active && f.slot === slot) ??
+			this.foeTeam.find(f => f.slot === slot) ??
 			this.foeTeam.find(f => f.active);
 	}
 
