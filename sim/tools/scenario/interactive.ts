@@ -752,7 +752,19 @@ export class InteractiveSession {
 		const details = parts[3] ?? '';
 		const det = this.parseDetails(details);
 		if (side === this.aiSide) {
-			const foe = this.foeAtSlot(slot);
+			// Pokemon#toString() drops the position letter once a mon is inactive
+			// ("p2: Kyogre" instead of "p2b: Kyogre") — this is exactly the ident
+			// a fainted mon's own post-faint forme-revert (Mega/Primal reverting
+			// on faint) carries, since `faint` already set isActive=false before
+			// this detailschange fires. foeAtSlot can't resolve a slot-less ident
+			// by position, and its "any active" fallback would grab a DIFFERENT
+			// still-active foe — so for a degraded ident, match by species
+			// identity among fainted foes instead (det.species here is always
+			// the reverted BASE species, matching the base of whichever fainted
+			// foe hasn't been reverted yet).
+			const foe = /^p\d+[a-h]$/.test(slot ?? '')
+				? this.foeAtSlot(slot)
+				: this.foeTeam.find(f => f.fainted && this.baseSpeciesId(f.species) === this.idof(det.species));
 			if (foe) foe.species = det.species;
 		}
 		// No equivalent patch needed on our own side: `submitChoice` nulls
@@ -968,6 +980,11 @@ export class InteractiveSession {
 		const id = (colon >= 0 ? ref.slice(0, colon) : ref).trim();
 		if (id === 'p1' || id === 'p2') return id;
 		return null;
+	}
+	/** A species stripped of any forme suffix, as a dex id — e.g. "Kyogre-Primal" -> "kyogre". */
+	private baseSpeciesId(species: string): string {
+		const i = species.indexOf('-');
+		return this.idof(i === -1 ? species : species.slice(0, i));
 	}
 	private foeAtSlot(slot: string | undefined): FoeMonState | undefined {
 		if (!slot) return undefined;
