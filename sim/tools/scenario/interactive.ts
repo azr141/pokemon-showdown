@@ -870,7 +870,13 @@ export class InteractiveSession {
 			const isGmax = parts[4] === 'Gmax' || effect.includes('Gmax');
 			const label = isGmax ? 'Gigantamaxed' : 'Dynamaxed';
 			const POKEMON = this.nameForSide(parts[2]);
-			const gmaxSpecies = isGmax ? `${POKEMON}-Gmax` : POKEMON;
+			// nameForSide() is narration text ("the opposing Conkeldurr") — never
+			// usable as newSpecies (the sprite/name-label field). Gigantamax
+			// doesn't actually change `pokemon.species` in the sim (it's a flag,
+			// not a forme change), so the real species has to come from the live
+			// battle object, with "-Gmax" appended by convention for the sprite.
+			const realSpecies = this.realSpeciesForSlot(slot) ?? this.rawNickFor(parts[2]);
+			const gmaxSpecies = isGmax ? `${realSpecies}-Gmax` : realSpecies;
 			if (side === this.aiSide) {
 				const foe = this.foeAtSlot(slot);
 				if (foe) foe.dynamax = true;
@@ -893,11 +899,12 @@ export class InteractiveSession {
 		const effect = parts[3] ?? '';
 		if (effect === 'Dynamax') {
 			const POKEMON = this.nameForSide(parts[2]);
+			const realSpecies = this.realSpeciesForSlot(slot) ?? this.rawNickFor(parts[2]);
 			if (side === this.aiSide) {
 				const foe = this.foeAtSlot(slot);
 				if (foe) foe.dynamax = false;
 			}
-			this.pushEvent({ kind: 'formechange', side, newSpecies: POKEMON, dynamax: 'end',
+			this.pushEvent({ kind: 'formechange', side, newSpecies: realSpecies, dynamax: 'end',
 				text: `${POKEMON}'s Dynamax ended!` });
 			return;
 		}
@@ -932,6 +939,18 @@ export class InteractiveSession {
 		const nick = ident.split(': ')[1] ?? '?';
 		const side = this.sideOf(this.slotOf(ident));
 		return side === this.aiSide ? `the opposing ${nick}` : nick;
+	}
+	/** The raw in-battle nickname/species from a protocol ident, with no narration prefix — for fields the client renders as a name/sprite id, never for log text. */
+	private rawNickFor(ident: string | undefined): string {
+		if (!ident) return '?';
+		return ident.split(': ')[1] ?? '?';
+	}
+	/** True species name (e.g. for sprite lookups) read live from the sim, since a nickname can differ from species and Gigantamax doesn't change `pokemon.species`. */
+	private realSpeciesForSlot(slot: string | undefined): string | null {
+		if (!slot) return null;
+		const side = this.battleStream?.battle?.sides?.find((s: any) => s.id === this.sideOf(slot));
+		const poke = side?.active?.find((p: any) => p && p.getSlot?.() === slot);
+		return poke?.species?.name ?? null;
 	}
 	private parseSideRef(ref: string): 'p1' | 'p2' | null {
 		if (!ref) return null;
