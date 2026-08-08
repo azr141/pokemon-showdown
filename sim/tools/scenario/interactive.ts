@@ -128,6 +128,8 @@ export interface FoeMonState {
 	revealedAbility: string | null;
 	teraType: string | null;
 	terastallized: string | null;
+	/** Currently Dynamaxed/Gigantamaxed (cleared when Dynamax ends). */
+	dynamax: boolean;
 	boosts: Record<string, number>;
 	fainted: boolean;
 	active: boolean;
@@ -158,6 +160,8 @@ export interface MyMonState {
 	active: boolean;
 	/** Slot when active (e.g. 'p1a', 'p1b'); null when benched or fainted. */
 	slot: string | null;
+	/** Currently Dynamaxed/Gigantamaxed (cleared when Dynamax ends). */
+	dynamax: boolean;
 }
 
 interface PendingChoice {
@@ -189,6 +193,8 @@ export interface InteractiveSessionSnapshot {
 	dexNames: {
 		items: Record<string, string>,
 		abilities: Record<string, string>,
+		/** Max-move ids (`maxairstream`) -> display names (`Max Airstream`). */
+		moves: Record<string, string>,
 	};
 	events: PrettyEvent[];
 	currentRequest: ChoiceRequest | null;
@@ -701,7 +707,7 @@ export class InteractiveSession {
 				species: det.species, level: det.level, gender: det.gender,
 				hpPercent: hpData.hpPercent, condition: hpStatus,
 				status: hpData.status, revealedItem: null, revealedAbility: null,
-				teraType: null, terastallized: null, boosts: {}, fainted: hpData.hpPercent === 0, active: true,
+				teraType: null, terastallized: null, dynamax: false, boosts: {}, fainted: hpData.hpPercent === 0, active: true,
 				slot: slot ?? null,
 			};
 			foe.active = true;
@@ -710,6 +716,7 @@ export class InteractiveSession {
 			foe.condition = hpStatus;
 			foe.status = hpData.status;
 			foe.boosts = {}; // boosts reset on switch
+			foe.dynamax = false; // Dynamax always ends when a mon leaves the field
 			if (!existing) this.foeTeam.push(foe);
 		} else {
 			// Switch on our side resets boosts for this slot only.
@@ -860,6 +867,10 @@ export class InteractiveSession {
 			const label = isGmax ? 'Gigantamaxed' : 'Dynamaxed';
 			const POKEMON = this.nameForSide(parts[2]);
 			const gmaxSpecies = isGmax ? `${POKEMON}-Gmax` : POKEMON;
+			if (side === this.aiSide) {
+				const foe = this.foeAtSlot(slot);
+				if (foe) foe.dynamax = true;
+			}
 			this.pushEvent({ kind: 'formechange', side, newSpecies: gmaxSpecies,
 				text: `${POKEMON} ${label}!` });
 			return;
@@ -878,6 +889,10 @@ export class InteractiveSession {
 		const effect = parts[3] ?? '';
 		if (effect === 'Dynamax') {
 			const POKEMON = this.nameForSide(parts[2]);
+			if (side === this.aiSide) {
+				const foe = this.foeAtSlot(slot);
+				if (foe) foe.dynamax = false;
+			}
 			this.pushEvent({ kind: 'formechange', side, newSpecies: POKEMON,
 				text: `${POKEMON}'s Dynamax ended!` });
 			return;
@@ -1077,9 +1092,10 @@ export class InteractiveSession {
 	 * "Heavy-Duty Boots" instead of "heavydutyboots" wherever an own-side
 	 * mon's item / ability is shown.
 	 */
-	private buildDexNamesForMyTeam(): { items: Record<string, string>, abilities: Record<string, string> } {
+	private buildDexNamesForMyTeam(): { items: Record<string, string>, abilities: Record<string, string>, moves: Record<string, string> } {
 		const items: Record<string, string> = {};
 		const abilities: Record<string, string> = {};
+		const moves: Record<string, string> = {};
 		const dex = this.dex ?? Dex;
 		const req = this.currentRequest as MoveRequest | undefined;
 		const pokemonList = req?.side?.pokemon ?? [];
@@ -1095,7 +1111,15 @@ export class InteractiveSession {
 				if (ab?.exists) abilities[abilityId] = ab.name;
 			}
 		}
-		return { items, abilities };
+		// Max moves are sent as ids (`maxairstream`), unlike base moves and
+		// Z-moves (which the request already sends as display names).
+		for (const activeSlot of req?.active ?? []) {
+			for (const maxMove of activeSlot?.maxMoves?.maxMoves ?? []) {
+				const mv = dex.moves.get(maxMove.move);
+				if (mv?.exists) moves[maxMove.move] = mv.name;
+			}
+		}
+		return { items, abilities, moves };
 	}
 
 	private buildCurrentMoves(): MoveMeta[][] | null {
@@ -1330,7 +1354,7 @@ export class InteractiveSession {
 				species: set.species, level: set.level ?? 100, gender: set.gender,
 				hpPercent: 100, condition: '',
 				status: null, revealedItem: null, revealedAbility: null,
-				teraType: null, terastallized: null, boosts: {}, fainted: false,
+				teraType: null, terastallized: null, dynamax: false, boosts: {}, fainted: false,
 				active: idx === 0, slot: null,
 			};
 			// Overlay open-sheet info — never overwrite what the log revealed.
@@ -1371,6 +1395,7 @@ export class InteractiveSession {
 				fainted: !!p.fainted,
 				active: !!p.isActive,
 				slot: p.isActive ? p.getSlot() : null,
+				dynamax: !!p.volatiles?.['dynamax'],
 			};
 		});
 	}
