@@ -739,9 +739,38 @@ export class InteractiveSession {
 		if (side === this.aiSide) {
 			const foe = this.foeAtSlot(slot);
 			if (foe) foe.species = det.species;
+		} else if (side === this.humanSide) {
+			// The engine only regenerates `currentRequest` at the NEXT decision
+			// point, so without this a mid-turn forme change on OUR side (Mega
+			// Evolution, Zen Mode, Cramorant's Gulp/Gorge forms, etc.) would keep
+			// reporting the pre-change species in every snapshot delivered for
+			// the rest of this turn — including the post-playback sync — and
+			// only catch up once a fresh request arrives. Patch the
+			// already-delivered request's `details` for the acting active slot
+			// directly, matching what a freshly-built request would show.
+			this.patchOwnActiveDetails(slot, details);
 		}
 		this.pushEvent({ kind: 'formechange', side, newSpecies: det.species,
 			text: `${this.sidePrefix(side)}${det.species} transformed!` });
+	}
+
+	/**
+	 * Rewrite the `details` string on our own side's active-slot entry within
+	 * the already-delivered `currentRequest`, so mid-turn forme changes are
+	 * visible in every snapshot until the next real request replaces it.
+	 * Mirrors the array-order convention `buildCurrentMoves` / the client's
+	 * `humanRow()` already rely on: active entries appear in slot order (a
+	 * before b).
+	 */
+	private patchOwnActiveDetails(slot: string | undefined, details: string): void {
+		if (!slot || !this.currentRequest) return;
+		const req = this.currentRequest as MoveRequest | undefined;
+		const pokemonList = req?.side?.pokemon;
+		if (!Array.isArray(pokemonList)) return;
+		const activeList = pokemonList.filter((p: any) => p.active);
+		const idx = slot.endsWith('b') ? 1 : 0;
+		const target = activeList[idx] as any;
+		if (target) target.details = details;
 	}
 
 	private handleBoost(parts: string[], up: boolean): void {
@@ -1136,7 +1165,7 @@ export class InteractiveSession {
 				};
 				if (activeFoes.length && move?.exists && move.category !== 'Status' && effType && effType !== '???') {
 					const foeTypes = this.effectiveTypesOf(activeFoes[0]);
-					meta.effectivenessVsFoe = this.computeEffectiveness(effType, foeTypes);
+					meta.effectivenessVsFoe = this.computeEffectiveness(effType, foeTypes, activeFoes[0]);
 				}
 				return meta;
 			});
@@ -1146,11 +1175,35 @@ export class InteractiveSession {
 	/**
 	 * Compute the type-chart multiplier of an attacking type against a
 	 * defender's types: 0 (immune) / 0.25 / 0.5 / 1 / 2 / 4.
+	 *
+	 * Pure type-chart math plus two verified, side-effect-free field/item
+	 * overrides. Deliberately does NOT call the real `Pokemon#runEffectiveness`
+	 * — that method dispatches the actual reactive event chain (e.g. Tera
+	 * Shell mutates ability state and logs `-activate` on every hit), which
+	 * would corrupt battle state and spam the log if invoked from a passive
+	 * per-poll UI hint. Other event-driven overrides (Scrappy, Miracle Eye,
+	 * Foresight) are NOT covered here — same reasoning, plus their exact rules
+	 * weren't verified with enough confidence to hard-code safely.
 	 */
-	private computeEffectiveness(moveType: string, defTypes: string[]): number {
+	private computeEffectiveness(moveType: string, defTypes: string[], foe?: FoeMonState): number {
 		const dex = this.dex ?? Dex;
-		if (!dex.getImmunity(moveType, defTypes as any)) return 0;
-		const eff = dex.getEffectiveness(moveType, defTypes as any);
+		let immune = !dex.getImmunity(moveType, defTypes as any);
+		// Ring Target on the defender restores any type immunity the move would
+		// otherwise have. Only checked when the item has been revealed to the
+		// player — reading the true held item here (even if unrevealed) would
+		// leak hidden state through the effectiveness hint.
+		if (immune && foe?.revealedItem && dex.items.get(foe.revealedItem)?.id === 'ringtarget') {
+			immune = false;
+		}
+		if (immune) return 0;
+		let eff = dex.getEffectiveness(moveType, defTypes as any);
+		// Delta Stream / Strong Winds: Flying-types take neutral, not
+		// super-effective, damage from Rock/Ice/Electric while it's active.
+		// Weather is always public field state, so no visibility concern.
+		const weather = (this.battleStream?.battle?.field as any)?.weather;
+		if (weather === 'deltastream' && defTypes.includes('Flying') && eff > 0) {
+			eff = 0;
+		}
 		// getEffectiveness returns -2..+2 in log2 space.
 		return 2 ** eff;
 	}

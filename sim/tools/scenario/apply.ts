@@ -345,6 +345,25 @@ export function applyGimmicks(
 		}
 		if (g.teraUsed) {
 			(side as any).terastallized = true;
+			// `side.terastallized` above only blocks the player from Terastallizing
+			// AGAIN this battle — it does not, by itself, make the active Pokemon
+			// currently Terastallized (typing/STAB read `pokemon.terastallized`,
+			// a separate per-Pokemon field). Without this, a scenario meant to
+			// open with "boss already Terastallized" would battle as the mon's
+			// base type. Mirrors the mutation half of the real
+			// BattleActions#terastallize (battle-actions.ts) — skips its `-terastallize`
+			// messaging/AfterTerastallization event (fait accompli, like every
+			// other silent setter in this file) and its Ogerpon/Terapagos/Morpeko
+			// forme-change special cases, which remain unsupported here.
+			const active = side.active[0];
+			if (active && !active.fainted && active.teraType) {
+				const type = active.teraType;
+				active.terastallized = type;
+				active.addedType = '';
+				active.knownType = true;
+				(active as any).apparentType = type;
+				battle.add('-terastallize', active, type, '[silent]');
+			}
 		}
 		if (g.dynamaxTurnsLeft && g.dynamaxTurnsLeft > 0) {
 			(side as any).dynamaxUsed = true;
