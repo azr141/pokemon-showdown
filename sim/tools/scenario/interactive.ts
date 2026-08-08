@@ -70,6 +70,10 @@ export interface PrettyEvent {
 	hpPct?: number;
 	/** For formechange: the new species/forme name for sprite updates. */
 	newSpecies?: string;
+	/** For formechange: set when this forme change is a Dynamax start/end, so the
+	 *  client can toggle the sprite's Dynamax glow live during playback instead of
+	 *  waiting for the post-turn snapshot sync. */
+	dynamax?: 'start' | 'end';
 	/** Human-readable name of the item/ability/effect that caused this event (e.g. "Rocky Helmet", "Iron Barbs", "Leftovers"). */
 	fromEffect?: string;
 	/** Category of the triggering effect, for popup styling. */
@@ -871,7 +875,7 @@ export class InteractiveSession {
 				const foe = this.foeAtSlot(slot);
 				if (foe) foe.dynamax = true;
 			}
-			this.pushEvent({ kind: 'formechange', side, newSpecies: gmaxSpecies,
+			this.pushEvent({ kind: 'formechange', side, newSpecies: gmaxSpecies, dynamax: 'start',
 				text: `${POKEMON} ${label}!` });
 			return;
 		}
@@ -893,7 +897,7 @@ export class InteractiveSession {
 				const foe = this.foeAtSlot(slot);
 				if (foe) foe.dynamax = false;
 			}
-			this.pushEvent({ kind: 'formechange', side, newSpecies: POKEMON,
+			this.pushEvent({ kind: 'formechange', side, newSpecies: POKEMON, dynamax: 'end',
 				text: `${POKEMON}'s Dynamax ended!` });
 			return;
 		}
